@@ -1,5 +1,5 @@
 # XYO Financial SDK (Node.js)
-![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/makefile.yml/badge.svg)    ![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/npm_publish.yml/badge.svg)
+![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/makefile.yml/badge.svg)    ![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/npm_publish.yml/badge.svg)    ![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/release.yml/badge.svg)
 
 <p align="center">
     <a href="https://xyo.financial" target="blank"><img alt="node.js (Turtle) Mascot" width="50%" src="https://github.com/syniol/xyo-sdk-node/blob/main/docs/mascot.png?raw=true" /></a>
