@@ -22,9 +22,9 @@ export interface EnrichTransactionCollectionStatusResponse {
 }
 
 export enum EnrichmentCollectionStatus {
-  EnrichmentCollectionStatusReady = 'READY',
-  EnrichmentCollectionStatusFailed = 'FAILED',
-  EnrichmentCollectionStatusPending = 'PENDING',
+  Ready = 'READY',
+  Failed = 'FAILED',
+  Pending = 'PENDING',
 }
 
 export interface Enrichment {

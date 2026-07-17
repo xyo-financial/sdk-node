@@ -1,8 +1,6 @@
 import {
   Request,
   HttpMethod,
-  HttpStatusCode,
-  CarbonHttpResponse,
   CarbonHttpRequestOption,
 } from 'carbon-http'
 
@@ -12,20 +10,60 @@ import {
   EnrichmentResponse,
   EnrichTransactionCollectionResponse,
   EnrichmentCollectionStatus,
-  EnrichTransactionCollectionStatusResponse,
 } from '../enrichment/enrichment'
 
 import { ClientError } from './error'
+
+export interface HttpTransportOptions {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  headers: Record<string, string>
+  body?: string
+  timeout?: number
+}
+
+export interface HttpTransportResponse<T> {
+  status: number
+  text: () => string
+  json: () => T
+}
+
+export type HttpTransport = <T>(
+  url: string,
+  options: HttpTransportOptions,
+) => Promise<HttpTransportResponse<T>>
 
 export interface ClientOptions {
   apiKey: string
   timeoutMs?: number
   endpoint?: string
-  // Transport override for testing
-  transport?: <T>(
-    url: string,
-    opt: CarbonHttpRequestOption,
-  ) => Promise<CarbonHttpResponse<T>>
+  // Agnostic transport override for testing & custom client configuration
+  transport?: HttpTransport
+}
+
+const defaultTransport: HttpTransport = async <T>(
+  url: string,
+  options: HttpTransportOptions,
+): Promise<HttpTransportResponse<T>> => {
+  const requestOptions: Record<string, unknown> = {
+    method: options.method as HttpMethod,
+    headers: options.headers,
+  }
+  if (options.body !== undefined) {
+    requestOptions['body'] = options.body
+  }
+  if (options.timeout !== undefined) {
+    requestOptions['timeout'] = options.timeout
+  }
+
+  const resp = await Request<T>(
+    url,
+    requestOptions as CarbonHttpRequestOption,
+  )
+  return {
+    status: resp.status,
+    text: () => resp.text(),
+    json: () => resp.json(),
+  }
 }
 
 function validateRequest(request: EnrichmentRequest): void {
@@ -36,7 +74,9 @@ function validateRequest(request: EnrichmentRequest): void {
   ) {
     throw new ClientError(
       'Request must be a valid object',
-      { category: 'validation' },
+      {
+        category: 'validation',
+      },
     )
   }
   if (
@@ -61,6 +101,101 @@ function validateRequest(request: EnrichmentRequest): void {
   }
 }
 
+function validateEnrichmentResponse(
+  data: unknown,
+): EnrichmentResponse {
+  if (data === null || typeof data !== 'object') {
+    throw new ClientError(
+      'Malformed API response: expected JSON object',
+      {
+        category: 'server_error',
+      },
+    )
+  }
+  const d = data as Record<string, unknown>
+  const categories = d['categories']
+  const validCategories =
+    Array.isArray(categories) &&
+    categories.every((c) => typeof c === 'string')
+  const validLoc =
+    d['location'] === null ||
+    typeof d['location'] === 'string'
+  const validAddr =
+    d['address'] === null ||
+    typeof d['address'] === 'string'
+
+  if (
+    typeof d['merchant'] !== 'string' ||
+    typeof d['description'] !== 'string' ||
+    !validCategories ||
+    typeof d['logo'] !== 'string' ||
+    !validLoc ||
+    !validAddr
+  ) {
+    throw new ClientError(
+      'Malformed API response: invalid EnrichmentResponse structure',
+      {
+        category: 'server_error',
+      },
+    )
+  }
+  return data as EnrichmentResponse
+}
+
+function validateEnrichTransactionCollectionResponse(
+  data: unknown,
+): EnrichTransactionCollectionResponse {
+  if (data === null || typeof data !== 'object') {
+    throw new ClientError(
+      'Malformed API response: expected JSON object',
+      {
+        category: 'server_error',
+      },
+    )
+  }
+  const d = data as Record<string, unknown>
+  if (
+    typeof d['id'] !== 'string' ||
+    typeof d['link'] !== 'string'
+  ) {
+    throw new ClientError(
+      'Malformed API response: invalid EnrichTransactionCollectionResponse structure',
+      {
+        category: 'server_error',
+      },
+    )
+  }
+  return data as EnrichTransactionCollectionResponse
+}
+
+function validateEnrichTransactionCollectionStatusResponse(
+  data: unknown,
+): EnrichmentCollectionStatus {
+  if (data === null || typeof data !== 'object') {
+    throw new ClientError(
+      'Malformed API response: expected JSON object',
+      {
+        category: 'server_error',
+      },
+    )
+  }
+  const d = data as Record<string, unknown>
+  const status = d['status']
+  if (
+    status !== EnrichmentCollectionStatus.Ready &&
+    status !== EnrichmentCollectionStatus.Failed &&
+    status !== EnrichmentCollectionStatus.Pending
+  ) {
+    throw new ClientError(
+      'Malformed API response: invalid status value',
+      {
+        category: 'server_error',
+      },
+    )
+  }
+  return status
+}
+
 const DEFAULT_ENDPOINT = 'https://api.xyo.financial'
 
 export class Client implements Enrichment {
@@ -74,10 +209,7 @@ export class Client implements Enrichment {
   private readonly apiKey: string
   private readonly timeoutMs: number
   private readonly endpoint: string
-  private readonly transport: <T>(
-    url: string,
-    opt: CarbonHttpRequestOption,
-  ) => Promise<CarbonHttpResponse<T>>
+  private readonly transport: HttpTransport
 
   public constructor(options: ClientOptions) {
     if (
@@ -94,7 +226,11 @@ export class Client implements Enrichment {
     this.endpoint = (
       options.endpoint ?? DEFAULT_ENDPOINT
     ).replace(/\/+$/, '')
-    this.transport = options.transport ?? Request
+    this.transport = options.transport ?? defaultTransport
+  }
+
+  public get endpointUrl(): string {
+    return this.endpoint
   }
 
   private get requiredHeaders(): Record<string, string> {
@@ -116,34 +252,20 @@ export class Client implements Enrichment {
       const resp = await this.transport<EnrichmentResponse>(
         `${this.endpoint}/v1/ai/finance/enrichment/transaction`,
         {
-          method: HttpMethod.POST,
+          method: 'POST',
           headers: this.requiredHeaders,
           body: JSON.stringify(request),
           timeout: this.timeoutMs,
         },
       )
 
-      if (resp.status !== HttpStatusCode.OK) {
+      if (resp.status !== 200) {
         throw new ClientError(resp.text(), {
           statusCode: resp.status,
         })
       }
 
-      const data = resp.json() as unknown
-      if (
-        data === null ||
-        data === undefined ||
-        typeof data !== 'object'
-      ) {
-        throw new ClientError(
-          'Malformed API response: expected JSON object',
-          {
-            category: 'server_error',
-          },
-        )
-      }
-
-      return data as EnrichmentResponse
+      return validateEnrichmentResponse(resp.json())
     } catch (error) {
       if (error instanceof ClientError) throw error
       throw new ClientError(
@@ -179,34 +301,22 @@ export class Client implements Enrichment {
         await this.transport<EnrichTransactionCollectionResponse>(
           `${this.endpoint}/v1/ai/finance/enrichment/transactions`,
           {
-            method: HttpMethod.POST,
+            method: 'POST',
             headers: this.requiredHeaders,
             body: JSON.stringify(request),
             timeout: this.timeoutMs,
           },
         )
 
-      if (resp.status !== HttpStatusCode.OK) {
+      if (resp.status !== 200) {
         throw new ClientError(resp.text(), {
           statusCode: resp.status,
         })
       }
 
-      const data = resp.json() as unknown
-      if (
-        data === null ||
-        data === undefined ||
-        typeof data !== 'object'
-      ) {
-        throw new ClientError(
-          'Malformed API response: expected JSON object',
-          {
-            category: 'server_error',
-          },
-        )
-      }
-
-      return data as EnrichTransactionCollectionResponse
+      return validateEnrichTransactionCollectionResponse(
+        resp.json(),
+      )
     } catch (error) {
       if (error instanceof ClientError) throw error
       throw new ClientError(
@@ -227,38 +337,24 @@ export class Client implements Enrichment {
     }
 
     try {
-      const resp =
-        await this.transport<EnrichTransactionCollectionStatusResponse>(
-          `${this.endpoint}/v1/ai/finance/enrichment/transactions/status/${id}`,
-          {
-            method: HttpMethod.GET,
-            headers: this.requiredHeaders,
-            timeout: this.timeoutMs,
-          },
-        )
+      const resp = await this.transport<unknown>(
+        `${this.endpoint}/v1/ai/finance/enrichment/transactions/status/${id}`,
+        {
+          method: 'GET',
+          headers: this.requiredHeaders,
+          timeout: this.timeoutMs,
+        },
+      )
 
-      if (resp.status !== HttpStatusCode.OK) {
+      if (resp.status !== 200) {
         throw new ClientError(resp.text(), {
           statusCode: resp.status,
         })
       }
 
-      const data = resp.json() as unknown
-      if (
-        data === null ||
-        data === undefined ||
-        typeof data !== 'object' ||
-        !('status' in data)
-      ) {
-        throw new ClientError(
-          'Malformed API response: status is missing',
-          {
-            category: 'server_error',
-          },
-        )
-      }
-
-      return data.status as EnrichmentCollectionStatus
+      return validateEnrichTransactionCollectionStatusResponse(
+        resp.json(),
+      )
     } catch (error) {
       if (error instanceof ClientError) throw error
       throw new ClientError(

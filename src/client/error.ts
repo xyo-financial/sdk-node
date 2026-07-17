@@ -47,45 +47,43 @@ export class ClientError extends Error {
     let parsedErrors: ApiError[] = []
     let formattedMessage = message
 
-    if (message.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(message) as unknown
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          'errors' in parsed &&
-          Array.isArray(parsed.errors)
-        ) {
-          parsedErrors = parsed.errors.filter(
-            (err): err is ApiError =>
-              err !== null &&
-              typeof err === 'object' &&
-              typeof (err as Record<string, unknown>)[
-                'type'
-              ] === 'string' &&
-              typeof (err as Record<string, unknown>)[
-                'title'
-              ] === 'string' &&
-              typeof (err as Record<string, unknown>)[
-                'detail'
-              ] === 'string' &&
-              typeof (err as Record<string, unknown>)[
-                'instance'
-              ] === 'string',
-          )
+    try {
+      const parsed = JSON.parse(message) as unknown
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        'errors' in parsed &&
+        Array.isArray(parsed.errors)
+      ) {
+        parsedErrors = parsed.errors.filter(
+          (err): err is ApiError =>
+            err !== null &&
+            typeof err === 'object' &&
+            typeof (err as Record<string, unknown>)[
+              'type'
+            ] === 'string' &&
+            typeof (err as Record<string, unknown>)[
+              'title'
+            ] === 'string' &&
+            typeof (err as Record<string, unknown>)[
+              'detail'
+            ] === 'string' &&
+            typeof (err as Record<string, unknown>)[
+              'instance'
+            ] === 'string',
+        )
 
-          if (parsedErrors.length > 0) {
-            formattedMessage = parsedErrors
-              .map(
-                (err) =>
-                  `API Error: [${err.instance}] ${err.title} - ${err.detail} (Type: ${err.type})`,
-              )
-              .join(' | ')
-          }
+        if (parsedErrors.length > 0) {
+          formattedMessage = parsedErrors
+            .map(
+              (err) =>
+                `API Error: [${err.instance}] ${err.title} - ${err.detail} (Type: ${err.type})`,
+            )
+            .join(' | ')
         }
-      } catch {
-        // Fall back to original message if not valid JSON
       }
+    } catch {
+      // Fall back to original message if not valid JSON
     }
 
     super(

@@ -1,24 +1,24 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert'
+import { HttpStatusCode } from 'carbon-http'
 import {
-  CarbonHttpResponse,
-  HttpStatusCode,
-} from 'carbon-http'
-import { Client } from './client'
+  Client,
+  HttpTransport,
+  HttpTransportResponse,
+} from './client'
 import {
   EnrichmentCollectionStatus,
   EnrichmentResponse,
   EnrichTransactionCollectionResponse,
-  EnrichTransactionCollectionStatusResponse,
 } from '../enrichment/enrichment'
 import { ClientError } from './error'
 
 function createMockTransport<T>(
   status: number,
   responseBody: string | T,
-) {
-  return <U>(): Promise<CarbonHttpResponse<U>> => {
-    const mockedResponse = {
+): HttpTransport {
+  return <U>(): Promise<HttpTransportResponse<U>> => {
+    const mockedResponse: HttpTransportResponse<U> = {
       status,
       text() {
         return typeof responseBody === 'string'
@@ -32,7 +32,7 @@ function createMockTransport<T>(
             : responseBody
         ) as U
       },
-    } as CarbonHttpResponse<U>
+    }
     return Promise.resolve(mockedResponse)
   }
 }
@@ -56,7 +56,7 @@ void describe('Client Enrichment Suite', () => {
         endpoint: 'https://custom-api.example.com///',
       })
       assert.strictEqual(
-        (sut as any).endpoint,
+        sut.endpointUrl,
         'https://custom-api.example.com',
       )
     })
@@ -237,6 +237,32 @@ void describe('Client Enrichment Suite', () => {
         },
       )
     })
+
+    test('when response payload structure is invalid', async () => {
+      const sut = new Client({
+        apiKey: 'test-key',
+        transport: createMockTransport(HttpStatusCode.OK, {
+          merchant: 'Costa',
+        }),
+      })
+
+      await assert.rejects(
+        () =>
+          sut.enrichTransaction({
+            content: 'Costa Coffee',
+            countryCode: 'GB',
+          }),
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.category, 'server_error')
+          assert.match(
+            err.message,
+            /invalid EnrichmentResponse structure/,
+          )
+          return true
+        },
+      )
+    })
   })
 
   describe('Test enrichTransactionCollection', () => {
@@ -296,15 +322,41 @@ void describe('Client Enrichment Suite', () => {
         },
       )
     })
+
+    test('when response payload structure is invalid', async () => {
+      const sut = new Client({
+        apiKey: 'test-key',
+        transport: createMockTransport(HttpStatusCode.OK, {
+          id: '123',
+        }),
+      })
+
+      await assert.rejects(
+        () =>
+          sut.enrichTransactionCollection([
+            {
+              content: 'Costa Coffee',
+              countryCode: 'GB',
+            },
+          ]),
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.category, 'server_error')
+          assert.match(
+            err.message,
+            /invalid EnrichTransactionCollectionResponse structure/,
+          )
+          return true
+        },
+      )
+    })
   })
 
   describe('Test enrichTransactionCollectionStatus', () => {
     test('when status code is 200', async () => {
-      const mockResponse: EnrichTransactionCollectionStatusResponse =
-        {
-          status:
-            EnrichmentCollectionStatus.EnrichmentCollectionStatusReady,
-        }
+      const mockResponse = {
+        status: EnrichmentCollectionStatus.Ready,
+      }
 
       const sut = new Client({
         apiKey: 'test-key',
@@ -368,7 +420,7 @@ void describe('Client Enrichment Suite', () => {
         (err: any) => {
           assert.ok(err instanceof ClientError)
           assert.strictEqual(err.category, 'server_error')
-          assert.match(err.message, /status is missing/)
+          assert.match(err.message, /invalid status value/)
           return true
         },
       )
