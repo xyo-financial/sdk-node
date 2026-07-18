@@ -1,10 +1,10 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert'
-import { HttpStatusCode } from 'carbon-http'
 import {
   Client,
   HttpTransport,
   HttpTransportResponse,
+  HttpTransportOptions,
 } from './client'
 import {
   EnrichmentCollectionStatus,
@@ -17,24 +17,65 @@ function createMockTransport<T>(
   status: number,
   responseBody: string | T,
 ): HttpTransport {
-  return <U>(): Promise<HttpTransportResponse<U>> => {
-    const mockedResponse: HttpTransportResponse<U> = {
-      status,
-      text() {
-        return typeof responseBody === 'string'
-          ? responseBody
-          : JSON.stringify(responseBody)
-      },
-      json() {
-        return (
-          typeof responseBody === 'string'
-            ? JSON.parse(responseBody)
-            : responseBody
-        ) as U
-      },
-    }
-    return Promise.resolve(mockedResponse)
+  return {
+    send<U>(): Promise<HttpTransportResponse<U>> {
+      const mockedResponse: HttpTransportResponse<U> = {
+        status,
+        text() {
+          return Promise.resolve(
+            typeof responseBody === 'string'
+              ? responseBody
+              : JSON.stringify(responseBody),
+          )
+        },
+        json() {
+          return Promise.resolve(
+            (typeof responseBody === 'string'
+              ? JSON.parse(responseBody)
+              : responseBody) as U,
+          )
+        },
+      }
+      return Promise.resolve(mockedResponse)
+    },
   }
+}
+
+function createCapturingTransport<T>(
+  status: number,
+  responseBody: string | T,
+) {
+  const calls: {
+    url: string
+    options: HttpTransportOptions
+  }[] = []
+  const transport: HttpTransport = {
+    send<U>(
+      url: string,
+      options: HttpTransportOptions,
+    ): Promise<HttpTransportResponse<U>> {
+      calls.push({ url, options })
+      const mockedResponse: HttpTransportResponse<U> = {
+        status,
+        text() {
+          return Promise.resolve(
+            typeof responseBody === 'string'
+              ? responseBody
+              : JSON.stringify(responseBody),
+          )
+        },
+        json() {
+          return Promise.resolve(
+            (typeof responseBody === 'string'
+              ? JSON.parse(responseBody)
+              : responseBody) as U,
+          )
+        },
+      }
+      return Promise.resolve(mockedResponse)
+    },
+  }
+  return { transport, calls }
 }
 
 void describe('Client Enrichment Suite', () => {
@@ -42,11 +83,59 @@ void describe('Client Enrichment Suite', () => {
     test('throws if apiKey is missing or empty', () => {
       assert.throws(
         () => new Client({ apiKey: '' }),
-        /apiKey is required/,
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.category, 'validation')
+          assert.match(err.message, /apiKey is required/)
+          return true
+        },
       )
       assert.throws(
         () => new Client({ apiKey: '   ' }),
-        /apiKey is required/,
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.category, 'validation')
+          assert.match(err.message, /apiKey is required/)
+          return true
+        },
+      )
+    })
+
+    test('throws if timeoutMs is invalid', () => {
+      assert.throws(
+        () =>
+          new Client({
+            apiKey: 'test-key',
+            timeoutMs: -50,
+          }),
+        /timeoutMs must be an integer/,
+      )
+      assert.throws(
+        () =>
+          new Client({
+            apiKey: 'test-key',
+            timeoutMs: 150000,
+          }),
+        /timeoutMs must be an integer/,
+      )
+      assert.throws(
+        () =>
+          new Client({
+            apiKey: 'test-key',
+            timeoutMs: 30.5,
+          }),
+        /timeoutMs must be an integer/,
+      )
+    })
+
+    test('throws if endpoint is invalid URL', () => {
+      assert.throws(
+        () =>
+          new Client({
+            apiKey: 'test-key',
+            endpoint: 'not-a-valid-url',
+          }),
+        /endpoint must be a valid URL/,
       )
     })
 
@@ -63,7 +152,17 @@ void describe('Client Enrichment Suite', () => {
   })
 
   describe('Validation Guards', () => {
-    const client = new Client({ apiKey: 'valid-key' })
+    // Inject a transport sentinel that throws to prove zero real HTTP calls occur
+    const client = new Client({
+      apiKey: 'valid-key',
+      transport: {
+        send() {
+          return Promise.reject(
+            new Error('Transport should not be called'),
+          )
+        },
+      },
+    })
 
     test('enrichTransaction validates request object properties', async () => {
       await assert.rejects(
@@ -107,7 +206,24 @@ void describe('Client Enrichment Suite', () => {
           assert.strictEqual(err.category, 'validation')
           assert.match(
             err.message,
-            /must be a 2-letter ISO/,
+            /must be a 2-letter uppercase ISO/,
+          )
+          return true
+        },
+      )
+
+      await assert.rejects(
+        () =>
+          client.enrichTransaction({
+            content: 'Costa',
+            countryCode: 'gb', // lowercase should fail validation
+          }),
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.category, 'validation')
+          assert.match(
+            err.message,
+            /must be a 2-letter uppercase ISO/,
           )
           return true
         },
@@ -121,6 +237,7 @@ void describe('Client Enrichment Suite', () => {
         (err: any) => {
           assert.ok(err instanceof ClientError)
           assert.strictEqual(err.category, 'validation')
+          assert.match(err.message, /must be an array/)
           return true
         },
       )
@@ -145,8 +262,104 @@ void describe('Client Enrichment Suite', () => {
         (err: any) => {
           assert.ok(err instanceof ClientError)
           assert.strictEqual(err.category, 'validation')
+          assert.match(
+            err.message,
+            /must be a non-empty string/,
+          )
           return true
         },
+      )
+    })
+  })
+
+  describe('Request Construction & Payload Delegation', () => {
+    test('enrichTransaction builds correct HTTP request parameters', async () => {
+      const mockResponse: EnrichmentResponse = {
+        merchant: 'Syniol Limited',
+        description: 'Cloud Software Consultancy',
+        categories: ['Cloud', 'Tech'],
+        logo: 'base64-logo',
+        location: 'London, UK',
+        address: null,
+      }
+
+      const { transport, calls } = createCapturingTransport(
+        200,
+        mockResponse,
+      )
+
+      const sut = new Client({
+        apiKey: 'secure-token',
+        endpoint: 'https://test.xyo.financial',
+        timeoutMs: 5000,
+        transport,
+      })
+
+      const req = {
+        content: 'Syniol Software',
+        countryCode: 'GB',
+      }
+      const actual = await sut.enrichTransaction(req)
+
+      assert.deepStrictEqual(actual, mockResponse)
+      assert.strictEqual(calls.length, 1)
+      const call = calls[0]!
+      assert.strictEqual(
+        call.url,
+        'https://test.xyo.financial/v1/ai/finance/enrichment/transaction',
+      )
+      assert.strictEqual(call.options.method, 'POST')
+      assert.strictEqual(call.options.timeout, 5000)
+      assert.strictEqual(
+        call.options.headers['Authorization'],
+        'Bearer secure-token',
+      )
+      assert.strictEqual(
+        call.options.headers['Content-Type'],
+        'application/json',
+      )
+      assert.strictEqual(
+        call.options.headers['Accept'],
+        'application/json',
+      )
+      assert.match(
+        call.options.headers['User-Agent']!,
+        /^xyo-sdk-node\//,
+      )
+      assert.strictEqual(
+        call.options.body,
+        JSON.stringify(req),
+      )
+    })
+
+    test('enrichTransactionCollectionStatus builds correct HTTP URL with escaping', async () => {
+      const mockResponse = {
+        status: EnrichmentCollectionStatus.Ready,
+      }
+      const { transport, calls } = createCapturingTransport(
+        200,
+        mockResponse,
+      )
+
+      const sut = new Client({
+        apiKey: 'secure-token',
+        transport,
+      })
+
+      const jobId = 'job/123?param=val#hash'
+      const status =
+        await sut.enrichTransactionCollectionStatus(jobId)
+
+      assert.strictEqual(
+        status,
+        EnrichmentCollectionStatus.Ready,
+      )
+      assert.strictEqual(calls.length, 1)
+      const call = calls[0]!
+      // Verify encodeURIComponent encoding is applied to jobId
+      assert.strictEqual(
+        call.url,
+        `https://api.xyo.financial/v1/ai/finance/enrichment/transactions/status/${encodeURIComponent(jobId)}`,
       )
     })
   })
@@ -165,10 +378,7 @@ void describe('Client Enrichment Suite', () => {
 
       const sut = new Client({
         apiKey: 'test-key',
-        transport: createMockTransport(
-          HttpStatusCode.OK,
-          mockResponse,
-        ),
+        transport: createMockTransport(200, mockResponse),
       })
 
       const actual = await sut.enrichTransaction({
@@ -183,7 +393,7 @@ void describe('Client Enrichment Suite', () => {
       const sut = new Client({
         apiKey: 'test-key',
         transport: createMockTransport(
-          HttpStatusCode.BAD_REQUEST,
+          400,
           'error with the request',
         ),
       })
@@ -196,10 +406,7 @@ void describe('Client Enrichment Suite', () => {
           }),
         (err: any) => {
           assert.ok(err instanceof ClientError)
-          assert.strictEqual(
-            err.statusCode,
-            HttpStatusCode.BAD_REQUEST,
-          )
+          assert.strictEqual(err.statusCode, 400)
           assert.strictEqual(err.category, 'validation')
           assert.strictEqual(
             err.message,
@@ -210,12 +417,14 @@ void describe('Client Enrichment Suite', () => {
       )
     })
 
-    test('when there is an unexpected error querying the API via HTTP protocol', async () => {
+    test('when there is a synchronous transport failure', async () => {
       const networkError = new Error('Network timeout')
       const sut = new Client({
         apiKey: 'test-key',
-        transport: () => {
-          throw networkError
+        transport: {
+          send() {
+            throw networkError
+          },
         },
       })
 
@@ -238,10 +447,40 @@ void describe('Client Enrichment Suite', () => {
       )
     })
 
+    test('when there is an asynchronous transport failure', async () => {
+      const networkError = new Error('DNS failure')
+      const sut = new Client({
+        apiKey: 'test-key',
+        transport: {
+          send() {
+            return Promise.reject(networkError)
+          },
+        },
+      })
+
+      await assert.rejects(
+        () =>
+          sut.enrichTransaction({
+            content: 'Syniol Software Consultancy',
+            countryCode: 'GB',
+          }),
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.category, 'network_error')
+          assert.strictEqual(err.cause, networkError)
+          assert.match(
+            err.message,
+            /Transport error: DNS failure/,
+          )
+          return true
+        },
+      )
+    })
+
     test('when response payload structure is invalid', async () => {
       const sut = new Client({
         apiKey: 'test-key',
-        transport: createMockTransport(HttpStatusCode.OK, {
+        transport: createMockTransport(200, {
           merchant: 'Costa',
         }),
       })
@@ -263,6 +502,33 @@ void describe('Client Enrichment Suite', () => {
         },
       )
     })
+
+    test('when response body JSON is malformed', async () => {
+      const sut = new Client({
+        apiKey: 'test-key',
+        transport: createMockTransport(
+          200,
+          '{"invalid-json',
+        ),
+      })
+
+      await assert.rejects(
+        () =>
+          sut.enrichTransaction({
+            content: 'Costa Coffee',
+            countryCode: 'GB',
+          }),
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.category, 'server_error')
+          assert.match(
+            err.message,
+            /failed to parse JSON payload/,
+          )
+          return true
+        },
+      )
+    })
   })
 
   describe('Test enrichTransactionCollection', () => {
@@ -275,10 +541,7 @@ void describe('Client Enrichment Suite', () => {
 
       const sut = new Client({
         apiKey: 'test-key',
-        transport: createMockTransport(
-          HttpStatusCode.OK,
-          mockResponse,
-        ),
+        transport: createMockTransport(200, mockResponse),
       })
 
       const actual = await sut.enrichTransactionCollection([
@@ -295,7 +558,7 @@ void describe('Client Enrichment Suite', () => {
       const sut = new Client({
         apiKey: 'test-key',
         transport: createMockTransport(
-          HttpStatusCode.BAD_REQUEST,
+          400,
           'error with the request',
         ),
       })
@@ -310,10 +573,7 @@ void describe('Client Enrichment Suite', () => {
           ]),
         (err: any) => {
           assert.ok(err instanceof ClientError)
-          assert.strictEqual(
-            err.statusCode,
-            HttpStatusCode.BAD_REQUEST,
-          )
+          assert.strictEqual(err.statusCode, 400)
           assert.strictEqual(
             err.message,
             'error with the request',
@@ -326,7 +586,7 @@ void describe('Client Enrichment Suite', () => {
     test('when response payload structure is invalid', async () => {
       const sut = new Client({
         apiKey: 'test-key',
-        transport: createMockTransport(HttpStatusCode.OK, {
+        transport: createMockTransport(200, {
           id: '123',
         }),
       })
@@ -360,10 +620,7 @@ void describe('Client Enrichment Suite', () => {
 
       const sut = new Client({
         apiKey: 'test-key',
-        transport: createMockTransport(
-          HttpStatusCode.OK,
-          mockResponse,
-        ),
+        transport: createMockTransport(200, mockResponse),
       })
 
       const actual =
@@ -374,12 +631,12 @@ void describe('Client Enrichment Suite', () => {
       assert.strictEqual(actual, mockResponse.status)
     })
 
-    test('when status code is not 200', async () => {
+    test('when status code is 404 (not found mapping check)', async () => {
       const sut = new Client({
         apiKey: 'test-key',
         transport: createMockTransport(
-          HttpStatusCode.BAD_REQUEST,
-          'error with the request',
+          404,
+          'Job not found',
         ),
       })
 
@@ -390,14 +647,8 @@ void describe('Client Enrichment Suite', () => {
           ),
         (err: any) => {
           assert.ok(err instanceof ClientError)
-          assert.strictEqual(
-            err.statusCode,
-            HttpStatusCode.BAD_REQUEST,
-          )
-          assert.strictEqual(
-            err.message,
-            'error with the request',
-          )
+          assert.strictEqual(err.statusCode, 404)
+          assert.strictEqual(err.category, 'not_found') // verifies P1-01 category mapping
           return true
         },
       )
@@ -406,10 +657,7 @@ void describe('Client Enrichment Suite', () => {
     test('when response body is malformed', async () => {
       const sut = new Client({
         apiKey: 'test-key',
-        transport: createMockTransport(
-          HttpStatusCode.OK,
-          {},
-        ),
+        transport: createMockTransport(200, {}),
       })
 
       await assert.rejects(
@@ -434,7 +682,7 @@ void describe('Client Enrichment Suite', () => {
           {
             type: 'Invalid Format',
             title: 'authorization header required',
-            status: HttpStatusCode.UNAUTHORIZED,
+            status: 401,
             detail:
               'Authorization header (Bearer) is required',
             instance: 'HttpHeaderAuthorizationException',
@@ -444,10 +692,7 @@ void describe('Client Enrichment Suite', () => {
 
       const sut = new Client({
         apiKey: 'test-key',
-        transport: createMockTransport(
-          HttpStatusCode.UNAUTHORIZED,
-          errorPayload,
-        ),
+        transport: createMockTransport(401, errorPayload),
       })
 
       await assert.rejects(
@@ -458,10 +703,7 @@ void describe('Client Enrichment Suite', () => {
           }),
         (err: any) => {
           assert.ok(err instanceof ClientError)
-          assert.strictEqual(
-            err.statusCode,
-            HttpStatusCode.UNAUTHORIZED,
-          )
+          assert.strictEqual(err.statusCode, 401)
           assert.strictEqual(err.category, 'authentication')
           assert.strictEqual(
             err.message,
@@ -469,21 +711,70 @@ void describe('Client Enrichment Suite', () => {
           )
           assert.strictEqual(err.errors.length, 1)
           assert.strictEqual(
-            err.errors[0]?.['type'],
+            err.errors[0]?.type,
             'Invalid Format',
           )
           assert.strictEqual(
-            err.errors[0]?.['title'],
+            err.errors[0]?.title,
             'authorization header required',
           )
           assert.strictEqual(
-            err.errors[0]?.['detail'],
+            err.errors[0]?.detail,
             'Authorization header (Bearer) is required',
           )
           assert.strictEqual(
-            err.errors[0]?.['instance'],
+            err.errors[0]?.instance,
             'HttpHeaderAuthorizationException',
           )
+          assert.strictEqual(
+            err.rawBody,
+            JSON.stringify(errorPayload),
+          )
+          return true
+        },
+      )
+    })
+
+    test('correctly handles multi-error RFC 7807 payloads', async () => {
+      const errorPayload = {
+        errors: [
+          {
+            type: 'ValidationError',
+            title: 'missing field',
+            status: 400,
+            detail: 'content is required',
+            instance: 'FieldValidationException',
+          },
+          {
+            type: 'ValidationError',
+            title: 'invalid length',
+            status: 400,
+            detail: 'countryCode must be 2 chars',
+            instance: 'FieldValidationException',
+          },
+        ],
+      }
+
+      const sut = new Client({
+        apiKey: 'test-key',
+        transport: createMockTransport(400, errorPayload),
+      })
+
+      await assert.rejects(
+        () =>
+          sut.enrichTransaction({
+            content: 'Syniol',
+            countryCode: 'GB',
+          }),
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.statusCode, 400)
+          assert.strictEqual(err.category, 'validation')
+          assert.strictEqual(
+            err.message,
+            'API Error: [FieldValidationException] missing field - content is required (Type: ValidationError) | API Error: [FieldValidationException] invalid length - countryCode must be 2 chars (Type: ValidationError)',
+          )
+          assert.strictEqual(err.errors.length, 2)
           return true
         },
       )

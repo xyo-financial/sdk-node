@@ -110,6 +110,14 @@ jobs:
           name: node-package
           path: xyo-sdk-node-${{ github.ref_name }}.tar.gz
 
+      # 7. Publish to NPM with provenance attestation
+      - name: Publish to NPM
+        run: |
+          npm config set //registry.npmjs.org/:_authToken=$NPM_TOKEN
+          npm publish --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   verify-example:
     name: Verify Package in Example App
     needs: publish-release

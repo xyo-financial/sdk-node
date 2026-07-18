@@ -4,11 +4,19 @@
   "description": "XYO SDK to connect and consume AI Banking Transaction Enrichment",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "rm -rf ./dist && tsc",
-    "prepublish": "rm -rf ./dist && tsc",
+    "build": "node scripts/update-version.js && rm -rf ./dist && tsc",
+    "prepublishOnly": "node scripts/update-version.js && rm -rf ./dist && tsc",
     "lint": "npx prettier -c src/**/*.ts && eslint ./src --ignore-pattern \"src/**/*.test.*\"",
-    "test": "node --test --import=tsx --experimental-test-coverage */**/*.test.ts"
+    "test": "node --test --import=tsx --experimental-test-coverage src/**/*.test.ts"
   },
   "repository": {
     "type": "git",

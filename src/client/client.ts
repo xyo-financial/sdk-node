@@ -5,7 +5,7 @@ import {
 } from 'carbon-http'
 
 import {
-  Enrichment,
+  EnrichmentService,
   EnrichmentRequest,
   EnrichmentResponse,
   EnrichTransactionCollectionResponse,
@@ -13,63 +13,66 @@ import {
 } from '../enrichment/enrichment'
 
 import { ClientError } from './error'
+import { SDK_VERSION } from './version'
 
 export interface HttpTransportOptions {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
-  headers: Record<string, string>
-  body?: string
-  timeout?: number
+  readonly method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  readonly headers: Record<string, string>
+  readonly body?: string
+  readonly timeout?: number
 }
 
 export interface HttpTransportResponse<T> {
-  status: number
-  text: () => string
-  json: () => T
+  readonly status: number
+  readonly text: () => Promise<string>
+  readonly json: () => Promise<T>
 }
 
-export type HttpTransport = <T>(
+export type HttpTransportFn = <T>(
   url: string,
   options: HttpTransportOptions,
 ) => Promise<HttpTransportResponse<T>>
 
-export interface ClientOptions {
-  apiKey: string
-  timeoutMs?: number
-  endpoint?: string
-  // Agnostic transport override for testing & custom client configuration
-  transport?: HttpTransport
+export interface HttpTransport {
+  send<T>(
+    url: string,
+    options: HttpTransportOptions,
+  ): Promise<HttpTransportResponse<T>>
 }
 
-const defaultTransport: HttpTransport = async <T>(
+export interface ClientOptions {
+  readonly apiKey: string
+  readonly timeoutMs?: number
+  readonly endpoint?: string
+  readonly transport?: HttpTransport | HttpTransportFn
+}
+
+const defaultTransport: HttpTransportFn = async <T>(
   url: string,
   options: HttpTransportOptions,
 ): Promise<HttpTransportResponse<T>> => {
-  const requestOptions: Record<string, unknown> = {
+  const requestOptions: CarbonHttpRequestOption = {
     method: options.method as HttpMethod,
     headers: options.headers,
-  }
-  if (options.body !== undefined) {
-    requestOptions['body'] = options.body
-  }
-  if (options.timeout !== undefined) {
-    requestOptions['timeout'] = options.timeout
+    ...(options.body !== undefined
+      ? { body: options.body }
+      : {}),
+    ...(options.timeout !== undefined
+      ? { timeout: options.timeout }
+      : {}),
   }
 
-  const resp = await Request<T>(
-    url,
-    requestOptions as CarbonHttpRequestOption,
-  )
+  const resp = await Request<T>(url, requestOptions)
   return {
     status: resp.status,
-    text: () => resp.text(),
-    json: () => resp.json(),
+    text: () => Promise.resolve(resp.text()),
+    json: () => Promise.resolve(resp.json()),
   }
 }
 
 function validateRequest(request: EnrichmentRequest): void {
   if (
-    (request as unknown) === null ||
-    (request as unknown) === undefined ||
+    (request as unknown) == null ||
     typeof request !== 'object'
   ) {
     throw new ClientError(
@@ -85,18 +88,18 @@ function validateRequest(request: EnrichmentRequest): void {
   ) {
     throw new ClientError(
       'Request content must be a non-empty string',
-      { category: 'validation' },
+      {
+        category: 'validation',
+      },
     )
   }
   if (
     typeof request.countryCode !== 'string' ||
-    request.countryCode.trim().length !== 2
+    !/^[A-Z]{2}$/.test(request.countryCode)
   ) {
     throw new ClientError(
-      'Request countryCode must be a 2-letter ISO country code (e.g., "GB")',
-      {
-        category: 'validation',
-      },
+      'Request countryCode must be a 2-letter uppercase ISO country code (e.g., "GB")',
+      { category: 'validation' },
     )
   }
 }
@@ -104,7 +107,7 @@ function validateRequest(request: EnrichmentRequest): void {
 function validateEnrichmentResponse(
   data: unknown,
 ): EnrichmentResponse {
-  if (data === null || typeof data !== 'object') {
+  if (data == null || typeof data !== 'object') {
     throw new ClientError(
       'Malformed API response: expected JSON object',
       {
@@ -134,9 +137,7 @@ function validateEnrichmentResponse(
   ) {
     throw new ClientError(
       'Malformed API response: invalid EnrichmentResponse structure',
-      {
-        category: 'server_error',
-      },
+      { category: 'server_error' },
     )
   }
   return data as EnrichmentResponse
@@ -145,7 +146,7 @@ function validateEnrichmentResponse(
 function validateEnrichTransactionCollectionResponse(
   data: unknown,
 ): EnrichTransactionCollectionResponse {
-  if (data === null || typeof data !== 'object') {
+  if (data == null || typeof data !== 'object') {
     throw new ClientError(
       'Malformed API response: expected JSON object',
       {
@@ -160,9 +161,7 @@ function validateEnrichTransactionCollectionResponse(
   ) {
     throw new ClientError(
       'Malformed API response: invalid EnrichTransactionCollectionResponse structure',
-      {
-        category: 'server_error',
-      },
+      { category: 'server_error' },
     )
   }
   return data as EnrichTransactionCollectionResponse
@@ -171,7 +170,7 @@ function validateEnrichTransactionCollectionResponse(
 function validateEnrichTransactionCollectionStatusResponse(
   data: unknown,
 ): EnrichmentCollectionStatus {
-  if (data === null || typeof data !== 'object') {
+  if (data == null || typeof data !== 'object') {
     throw new ClientError(
       'Malformed API response: expected JSON object',
       {
@@ -198,18 +197,18 @@ function validateEnrichTransactionCollectionStatusResponse(
 
 const DEFAULT_ENDPOINT = 'https://api.xyo.financial'
 
-export class Client implements Enrichment {
+export class Client implements EnrichmentService {
   /**
    * @deprecated Use the `endpoint` constructor option to configure the API endpoint instead.
    */
   public static readonly BASE_URL = DEFAULT_ENDPOINT
 
-  private static readonly SDK_VERSION = '1.1.0'
+  private static readonly SDK_VERSION = SDK_VERSION
 
-  private readonly apiKey: string
   private readonly timeoutMs: number
   private readonly endpoint: string
   private readonly transport: HttpTransport
+  private readonly headers: Record<string, string>
 
   public constructor(options: ClientOptions) {
     if (
@@ -217,30 +216,60 @@ export class Client implements Enrichment {
       typeof options.apiKey !== 'string' ||
       options.apiKey.trim().length === 0
     ) {
-      throw new Error(
-        'XYO SDK: apiKey is required and must be a non-empty string',
+      throw new ClientError(
+        'apiKey is required and must be a non-empty string',
+        { category: 'validation' },
       )
     }
-    this.apiKey = options.apiKey.trim()
+
+    if (
+      options.timeoutMs !== undefined &&
+      (options.timeoutMs <= 0 ||
+        options.timeoutMs > 120000 ||
+        !Number.isInteger(options.timeoutMs))
+    ) {
+      throw new ClientError(
+        'timeoutMs must be an integer between 1 and 120000 milliseconds',
+        { category: 'validation' },
+      )
+    }
+
+    const trimmedApiKey = options.apiKey.trim()
     this.timeoutMs = options.timeoutMs ?? 30000
     this.endpoint = (
       options.endpoint ?? DEFAULT_ENDPOINT
     ).replace(/\/+$/, '')
-    this.transport = options.transport ?? defaultTransport
+
+    try {
+      new URL(this.endpoint)
+    } catch {
+      throw new ClientError(
+        'endpoint must be a valid URL',
+        {
+          category: 'validation',
+        },
+      )
+    }
+
+    const rawTransport =
+      options.transport ?? defaultTransport
+    this.transport =
+      typeof rawTransport === 'function'
+        ? { send: rawTransport }
+        : rawTransport
+
+    // Compute and freeze headers once at initialization (perf optimization)
+    this.headers = Object.freeze({
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${trimmedApiKey}`,
+      'X-SDK-Version': Client.SDK_VERSION,
+      'User-Agent': `xyo-sdk-node/${Client.SDK_VERSION}`,
+    })
   }
 
   public get endpointUrl(): string {
     return this.endpoint
-  }
-
-  private get requiredHeaders(): Record<string, string> {
-    return {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${this.apiKey}`,
-      'X-SDK-Version': Client.SDK_VERSION,
-      'User-Agent': `xyo-sdk-node/${Client.SDK_VERSION}`,
-    }
   }
 
   public async enrichTransaction(
@@ -248,24 +277,17 @@ export class Client implements Enrichment {
   ): Promise<EnrichmentResponse> {
     validateRequest(request)
 
+    let resp: HttpTransportResponse<EnrichmentResponse>
     try {
-      const resp = await this.transport<EnrichmentResponse>(
+      resp = await this.transport.send<EnrichmentResponse>(
         `${this.endpoint}/v1/ai/finance/enrichment/transaction`,
         {
           method: 'POST',
-          headers: this.requiredHeaders,
+          headers: this.headers,
           body: JSON.stringify(request),
           timeout: this.timeoutMs,
         },
       )
-
-      if (resp.status !== 200) {
-        throw new ClientError(resp.text(), {
-          statusCode: resp.status,
-        })
-      }
-
-      return validateEnrichmentResponse(resp.json())
     } catch (error) {
       if (error instanceof ClientError) throw error
       throw new ClientError(
@@ -273,50 +295,64 @@ export class Client implements Enrichment {
         { category: 'network_error', cause: error },
       )
     }
+
+    if (resp.status < 200 || resp.status >= 300) {
+      const errorBody = await resp.text()
+      throw ClientError.fromApiResponse(
+        errorBody,
+        resp.status,
+      )
+    }
+
+    let parsedJson: unknown
+    try {
+      parsedJson = await resp.json()
+    } catch (error) {
+      throw new ClientError(
+        'Malformed API response: failed to parse JSON payload',
+        {
+          category: 'server_error',
+          cause: error,
+        },
+      )
+    }
+
+    return validateEnrichmentResponse(parsedJson)
   }
 
   public async enrichTransactionCollection(
-    request: EnrichmentRequest[],
+    request: readonly EnrichmentRequest[],
   ): Promise<EnrichTransactionCollectionResponse> {
     if (!Array.isArray(request)) {
       throw new ClientError(
         'Request collection must be an array',
-        { category: 'validation' },
-      )
-    }
-    if (request.length === 0) {
-      throw new ClientError(
-        'Request collection must contain at least one transaction request',
         {
           category: 'validation',
         },
       )
     }
+    if (request.length === 0) {
+      throw new ClientError(
+        'Request collection must contain at least one transaction request',
+        { category: 'validation' },
+      )
+    }
     for (const req of request) {
-      validateRequest(req)
+      validateRequest(req as EnrichmentRequest)
     }
 
+    let resp: HttpTransportResponse<EnrichTransactionCollectionResponse>
     try {
-      const resp =
-        await this.transport<EnrichTransactionCollectionResponse>(
+      resp =
+        await this.transport.send<EnrichTransactionCollectionResponse>(
           `${this.endpoint}/v1/ai/finance/enrichment/transactions`,
           {
             method: 'POST',
-            headers: this.requiredHeaders,
+            headers: this.headers,
             body: JSON.stringify(request),
             timeout: this.timeoutMs,
           },
         )
-
-      if (resp.status !== 200) {
-        throw new ClientError(resp.text(), {
-          statusCode: resp.status,
-        })
-      }
-
-      return validateEnrichTransactionCollectionResponse(
-        resp.json(),
-      )
     } catch (error) {
       if (error instanceof ClientError) throw error
       throw new ClientError(
@@ -324,6 +360,31 @@ export class Client implements Enrichment {
         { category: 'network_error', cause: error },
       )
     }
+
+    if (resp.status < 200 || resp.status >= 300) {
+      const errorBody = await resp.text()
+      throw ClientError.fromApiResponse(
+        errorBody,
+        resp.status,
+      )
+    }
+
+    let parsedJson: unknown
+    try {
+      parsedJson = await resp.json()
+    } catch (error) {
+      throw new ClientError(
+        'Malformed API response: failed to parse JSON payload',
+        {
+          category: 'server_error',
+          cause: error,
+        },
+      )
+    }
+
+    return validateEnrichTransactionCollectionResponse(
+      parsedJson,
+    )
   }
 
   public async enrichTransactionCollectionStatus(
@@ -332,28 +393,21 @@ export class Client implements Enrichment {
     if (typeof id !== 'string' || id.trim().length === 0) {
       throw new ClientError(
         'Collection Job ID must be a non-empty string',
-        { category: 'validation' },
+        {
+          category: 'validation',
+        },
       )
     }
 
+    let resp: HttpTransportResponse<unknown>
     try {
-      const resp = await this.transport<unknown>(
-        `${this.endpoint}/v1/ai/finance/enrichment/transactions/status/${id}`,
+      resp = await this.transport.send<unknown>(
+        `${this.endpoint}/v1/ai/finance/enrichment/transactions/status/${encodeURIComponent(id)}`,
         {
           method: 'GET',
-          headers: this.requiredHeaders,
+          headers: this.headers,
           timeout: this.timeoutMs,
         },
-      )
-
-      if (resp.status !== 200) {
-        throw new ClientError(resp.text(), {
-          statusCode: resp.status,
-        })
-      }
-
-      return validateEnrichTransactionCollectionStatusResponse(
-        resp.json(),
       )
     } catch (error) {
       if (error instanceof ClientError) throw error
@@ -362,5 +416,30 @@ export class Client implements Enrichment {
         { category: 'network_error', cause: error },
       )
     }
+
+    if (resp.status < 200 || resp.status >= 300) {
+      const errorBody = await resp.text()
+      throw ClientError.fromApiResponse(
+        errorBody,
+        resp.status,
+      )
+    }
+
+    let parsedJson: unknown
+    try {
+      parsedJson = await resp.json()
+    } catch (error) {
+      throw new ClientError(
+        'Malformed API response: failed to parse JSON payload',
+        {
+          category: 'server_error',
+          cause: error,
+        },
+      )
+    }
+
+    return validateEnrichTransactionCollectionStatusResponse(
+      parsedJson,
+    )
   }
 }
