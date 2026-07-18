@@ -9,4 +9,4 @@ Since Node.js doesn't have an official animal mascot like Go (Gopher) or Rust (C
 * **Reference Images Used:** 
   * `../../rust/docs/rust_mascot_sleek_neon.jpg`
   * `../../golang/docs/mascot.png`
-* **Prompt Used:** "A sleek, neon-style illustration of a Node.js inspired mascot, designed as a futuristic cybernetic hexagon or a high-tech Node.js symbol. Dark background, vibrant glowing green neon colors, modern tech aesthetic matching the reference images."
+* **Prompt Used:** "A sleek, neon-style illustration of a Node.js inspired mascot, designed as a futuristic cybernetic hexagon or a high-tech Node.js symbol. Dark background, vibrant glowing green neon colours, modern tech aesthetic matching the reference images."
