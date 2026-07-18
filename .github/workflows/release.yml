@@ -151,6 +151,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.x'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Download Package Artifact
         uses: actions/download-artifact@v4
@@ -158,8 +159,6 @@ jobs:
           name: node-package
 
       - name: Publish Package to NPM
-        run: |
-          npm config set //registry.npmjs.org/:_authToken=$NPM_TOKEN
-          npm publish xyo-sdk-node-${{ github.ref_name }}.tar.gz --provenance
+        run: npm publish xyo-sdk-node-${{ github.ref_name }}.tar.gz --provenance
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
