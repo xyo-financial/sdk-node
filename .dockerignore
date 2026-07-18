@@ -1,1 +1,7 @@
 node_modules/
+example/node_modules/
+.git/
+.github/
+.idea/
+dist/
+docs/

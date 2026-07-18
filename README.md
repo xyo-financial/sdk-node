@@ -1,5 +1,5 @@
 # XYO Financial SDK (Node.js)
-![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/makefile.yml/badge.svg)    ![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/npm_publish.yml/badge.svg)
+![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/makefile.yml/badge.svg)    ![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/npm_publish.yml/badge.svg)    ![workflow](https://github.com/syniol/xyo-sdk-node/actions/workflows/release.yml/badge.svg)
 
 <p align="center">
     <a href="https://xyo.financial" target="blank"><img alt="node.js (Turtle) Mascot" width="50%" src="https://github.com/syniol/xyo-sdk-node/blob/main/docs/mascot.png?raw=true" /></a>
@@ -31,35 +31,46 @@ __ES5 Example__
 const xyo = require('xyo-sdk');
 
 (async () => {
-  const client = new xyo.Client(new xyo.ClientConfig({ apiKey: 'YourAPIKeyFromXYO.FinancialDashboard' }))
+  const client = new xyo.Client({ apiKey: 'YourAPIKeyFromXYO.FinancialDashboard' })
 })()
 ```
 
 __ES6+ and TypeScript Example__
-```js
-import { Client, ClientConfig } from 'xyo-sdk'
+```ts
+import { Client, ClientError } from 'xyo-sdk'
 
 (async () => {
-  const client = new Client(new ClientConfig({ apiKey: 'YourAPIKeyFromXYO.FinancialDashboard' }))
+  const client = new Client({ 
+    apiKey: 'YourAPIKeyFromXYO.FinancialDashboard',
+    timeoutMs: 30000 // Optional: defaults to 30 seconds
+  })
 })()
 ```
 
-__Enrich a Single Payment Transaction__:
-```js
-const enrichedTransaction = client.enrichTransaction({
-  content: 'Costa PickUp',
-  countryCode: 'GB',
-})
+### Usage
 
-console.log(enrichedTransaction.merchant)
-console.log(enrichedTransaction.description)
-console.log(enrichedTransaction.categories)
-console.log(enrichedTransaction.logo)
+__Enrich a Single Payment Transaction__:
+```ts
+try {
+  const enrichedTransaction = await client.enrichTransaction({
+    content: 'Costa PickUp',
+    countryCode: 'GB',
+  })
+
+  console.log(enrichedTransaction.merchant)
+  console.log(enrichedTransaction.description)
+  console.log(enrichedTransaction.categories)
+  console.log(enrichedTransaction.logo)
+} catch (error) {
+  if (error instanceof ClientError) {
+    console.error(`API Error: ${error.message} (Status: ${error.statusCode})`)
+  }
+}
 ```
 
 __Enrich Payment Transaction Collection _(Bulk Enrichment)___:
-```js
-const enrichedTransactionCollection = client.enrichTransactionCollection([
+```ts
+const enrichedTransactionCollection = await client.enrichTransactionCollection([
   { 
     content: 'Costa PickUp',
     countryCode: 'GB',
@@ -75,10 +86,10 @@ console.log(enrichedTransactionCollection.link)
 ```
 
 __Payment Transaction Collection Status__:
-```js
-const enrichedTransactionCollectionStatus = client.enrichTransactionCollectionStatus(enrichedTransactionCollection.id)
+```ts
+const status = await client.enrichTransactionCollectionStatus(enrichedTransactionCollection.id)
 
-console.log(enrichedTransactionCollectionStatus)
+console.log(`Status: ${status}`)
 ```
 
 

@@ -1,0 +1,167 @@
+name: Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+  id-token: write # Required for GitHub OIDC signing and attestation
+  attestations: write # Required to upload provenance attestations
+jobs:
+  verify-tag:
+    name: Verify Tag Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Tag is on main Branch
+        run: |
+          git branch -r --contains ${{ github.ref_name }} | grep -E "origin/main" || {
+            echo "Error: Tag must be pushed from the main branch."
+            exit 1;
+          }
+
+      - name: Extract package.json Version
+        id: package_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Package.json version is $VERSION"
+          echo "val=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Compare package.json Version to Git Tag
+        run: |
+          TAG_VER=${{ github.ref_name }}
+          TAG_VER=${TAG_VER#v} # Strip leading 'v'
+          PKG_VER=${{ steps.package_version.outputs.val }}
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "Error: Git tag ($TAG_VER) does not match package.json version ($PKG_VER)"
+            exit 1
+          fi
+
+  publish-release:
+    name: Publish Release & Artifacts
+    needs: verify-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter and tests
+        run: |
+          npm run lint
+          npm run test
+
+      - name: Build SDK
+        run: npm run build
+
+      # 1. Archive creation
+      - name: Create NPM Package
+        run: |
+          npm pack
+          # npm pack creates xyo-sdk-<version>.tgz, let's rename it to a standard format for release
+          TAG_VER=${{ github.ref_name }}
+          TAG_VER=${TAG_VER#v}
+          mv xyo-sdk-${TAG_VER}.tgz xyo-sdk-node-${{ github.ref_name }}.tar.gz
+
+      # 2. Generate Checksums
+      - name: Generate SHA-256 Checksum
+        run: sha256sum xyo-sdk-node-${{ github.ref_name }}.tar.gz > xyo-sdk-node-${{ github.ref_name }}.tar.gz.sha256
+
+      # 3. Generate SBOM (Software Bill of Materials)
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: 'spdx-json'
+          output-file: 'xyo-sdk-node-${{ github.ref_name }}.spdx.json'
+
+      # 4. Generate GitHub Attestation (Provenance & Integrity signatures)
+      - name: Generate Artifact Attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'xyo-sdk-node-${{ github.ref_name }}.tar.gz'
+
+      # 5. Create Github Release with Assets
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            xyo-sdk-node-${{ github.ref_name }}.tar.gz
+            xyo-sdk-node-${{ github.ref_name }}.tar.gz.sha256
+            xyo-sdk-node-${{ github.ref_name }}.spdx.json
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      # 6. Upload Package Artifact for verify-example job
+      - name: Upload Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-package
+          path: xyo-sdk-node-${{ github.ref_name }}.tar.gz
+
+  verify-example:
+    name: Verify Package in Example App
+    needs: publish-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Download Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: node-package
+
+      - name: Install SDK in Example App
+        run: |
+          cd example
+          npm install ../xyo-sdk-node-${{ github.ref_name }}.tar.gz
+
+      - name: Run Example Application
+        run: |
+          cd example
+          node index.js
+
+  publish-npm:
+    name: Publish to NPM Registry
+    needs: [publish-release, verify-example]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Download Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: node-package
+
+      - name: Extract and Publish Package
+        run: |
+          tar -xzf xyo-sdk-node-${{ github.ref_name }}.tar.gz
+          cd package
+          npm config set //registry.npmjs.org/:_authToken=$NPM_TOKEN
+          npm publish --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

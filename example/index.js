@@ -1,7 +1,11 @@
-const xyo = require('xyo-sdk-local');
+const xyo = require('xyo-sdk')
 
-(async () => {
-  new xyo.Client(new xyo.ClientConfig({ apiKey: 'ApiKeyFromXYO.FinancialDashboard' }))
+;(async () => {
+  // Verify the SDK can be imported and the client can be instantiated.
+  // For a full usage example see the README.
+  new xyo.Client({ apiKey: 'example-api-key' })
 
-  console.log("Example test for XYO SDK")
+  console.log(
+    'Successfully imported and instantiated the XYO SDK Client',
+  )
 })()

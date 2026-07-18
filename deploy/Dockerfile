@@ -1,10 +1,12 @@
 FROM node:22.18.0-alpine
 
+WORKDIR /app
+
 COPY . .
 
-# Runs linting and unit tests for the release package
-RUN npm i && npm run lint && npm test
+# Runs security audit, linting, unit tests, and compiles the release package
+RUN npm ci && npm audit --audit-level=low && npm run lint && npm test && npm run build
 
 # Runs example package to test the import and instantiation of release package
-WORKDIR /example
-RUN npm i && npm start
+WORKDIR /app/example
+RUN npm ci && npm audit --audit-level=low && npm start
