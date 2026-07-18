@@ -43,7 +43,7 @@ GitHub Actions workflows are configured to orchestrate tag releases. To release 
 
 1. Increment the `version` inside the root `package.json` to match your target version.
 2. Run `npm install` to update the root `package-lock.json`.
-3. Synchronize the example app lockfile by running:
+3. Synchronise the example app lockfile by running:
    ```bash
    cd example && npm install
    ```

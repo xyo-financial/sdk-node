@@ -17,7 +17,7 @@
 
 The **XYO Financial SDK** provides an elegant, zero-dependency (runtime), strictly-typed interface for integrating XYO's transaction enrichment engine into enterprise Node.js environments. Engineered with the rigorous demands of Tier-1 financial institutions in mind, this SDK facilitates the seamless translation of raw, cryptic payment strings into rich, categorised, and actionable merchant data.
 
-Maintained by [Syniol Limited](https://syniol.com) as the official Node.js distribution for XYO.Financial, this SDK is designed to be embedded within mission-critical paths—from real-time payment authorization flows to high-throughput nightly batch processing.
+Maintained by [Syniol Limited](https://syniol.com) as the official Node.js distribution for XYO.Financial, this SDK is designed to be embedded within mission-critical paths—from real-time payment authorisation flows to high-throughput nightly batch processing.
 
 ## 🏗 Enterprise Architectural Principles
 
@@ -53,14 +53,14 @@ pnpm add xyo-sdk
 
 ## 🚀 Integration Patterns
 
-### 1. Initialization
+### 1. Initialisation
 
-Initialize the `Client` as a singleton within your application's dependency injection container or module scope.
+Initialise the `Client` as a singleton within your application's dependency injection container or module scope.
 
 ```typescript
 import { Client } from 'xyo-sdk';
 
-// Initialize with environment variables (Best Practice)
+// Initialise with environment variables (Best Practice)
 const xyoClient = new Client({ 
   apiKey: process.env.XYO_API_KEY,
   timeoutMs: 30000, // 30-second timeout for resilient network bounding
@@ -90,7 +90,7 @@ async function processPayment(rawDescription: string, country: string) {
 
   } catch (error) {
     if (error instanceof ClientError) {
-      // Handle known API rejection (e.g., 400 Bad Request, 401 Unauthorized, 429 Too Many Requests)
+      // Handle known API rejection (e.g., 400 Bad Request, 401 Unauthorised, 429 Too Many Requests)
       console.error(`XYO API Error [${error.statusCode}]: ${error.message}`);
     } else {
       // Handle network-level or systemic failures (e.g., DNS resolution, TCP timeouts)
@@ -104,7 +104,7 @@ async function processPayment(rawDescription: string, country: string) {
 
 ### 3. Batch Processing (Asynchronous Bulk Enrichment)
 
-Designed for data warehousing, nightly reconciliations, or large-scale historical transaction analysis. Operations are queued asynchronously to respect API rate limits and maximize throughput.
+Designed for data warehousing, nightly reconciliations, or large-scale historical transaction analysis. Operations are queued asynchronously to respect API rate limits and maximise throughput.
 
 ```typescript
 async function processNightlyBatch(transactions: Array<{content: string, countryCode: string}>) {
@@ -135,21 +135,21 @@ async function processNightlyBatch(transactions: Array<{content: string, country
 
 ## 🛡 Robust Error Handling
 
-The SDK normalizes all operational errors into a structured `ClientError` class, enabling highly reliable control flow and alerting mechanisms.
+The SDK normalises all operational errors into a structured `ClientError` class, enabling highly reliable control flow and alerting mechanisms.
 
-| HTTP Status | Context | Enterprise Mitigation Strategy |
-| :--- | :--- | :--- |
-| `400` | Bad Request | Trigger DLQ (Dead Letter Queue) routing for payload inspection. |
-| `401` / `403` | Unauthorized | Alert SecOps. Validate API key rotation and secret manager integrity. |
-| `429` | Too Many Requests | API limit reached. Implement Exponential Backoff and Jitter (Client handles timeouts, but 429 requires app-level backoff). |
-| `500` / `502` / `503` | Server Error | XYO upstream degradation. Open circuit breaker; fallback to raw string processing. |
+| HTTP Status           | Context           | Enterprise Mitigation Strategy                                                                                             |
+|:----------------------|:------------------|:---------------------------------------------------------------------------------------------------------------------------|
+| `400`                 | Bad Request       | Trigger DLQ (Dead Letter Queue) routing for payload inspection.                                                            |
+| `401` / `403`         | Unauthorised      | Alert SecOps. Validate API key rotation and secret manager integrity.                                                      |
+| `429`                 | Too Many Requests | API limit reached. Implement Exponential Backoff and Jitter (Client handles timeouts, but 429 requires app-level backoff). |
+| `500` / `502` / `503` | Server Error      | XYO upstream degradation. Open circuit breaker; fallback to raw string processing.                                         |
 
 ---
 
 ## 🔒 Security & Compliance
 
-- **Zero Third-Party Runtime Dependencies**: Minimizes supply-chain attack vectors. The SDK relies purely on the native Node.js `https` module.
-- **Data Minimization**: Send only the raw transaction string and country code. The SDK does not require Account Numbers, Sort Codes, or any strictly regulated PII.
+- **Zero Third-Party Runtime Dependencies**: Minimises the supply-chain attack vectors. The SDK relies purely on the native Node.js `https` module.
+- **Data Minimisation**: Send only the raw transaction string and country code. The SDK does not require Account Numbers, Sort Codes, or any strictly regulated PII.
 - **TLS Enforcement**: All traffic is strictly bound to `https://`. Downgrade attacks are structurally impossible within the transport layer of the client.
 
 ## 📞 Support & SLAs
