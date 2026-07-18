@@ -157,11 +157,9 @@ jobs:
         with:
           name: node-package
 
-      - name: Extract and Publish Package
+      - name: Publish Package to NPM
         run: |
-          tar -xzf xyo-sdk-node-${{ github.ref_name }}.tar.gz
-          cd package
           npm config set //registry.npmjs.org/:_authToken=$NPM_TOKEN
-          npm publish --provenance
+          npm publish xyo-sdk-node-${{ github.ref_name }}.tar.gz --provenance
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
