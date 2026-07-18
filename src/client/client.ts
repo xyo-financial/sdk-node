@@ -65,16 +65,35 @@ const defaultTransport: HttpTransportFn = async <T>(
   const resp = await Request<T>(url, requestOptions)
   return {
     status: resp.status,
-    text: () => Promise.resolve(resp.text()),
-    json: () => Promise.resolve(resp.json()),
+    text: () => {
+      try {
+        return Promise.resolve(resp.text())
+      } catch (err) {
+        return Promise.reject(
+          err instanceof Error
+            ? err
+            : new Error(String(err)),
+        )
+      }
+    },
+    json: () => {
+      try {
+        return Promise.resolve(resp.json())
+      } catch (err) {
+        return Promise.reject(
+          err instanceof Error
+            ? err
+            : new Error(String(err)),
+        )
+      }
+    },
   }
 }
 
-function validateRequest(request: EnrichmentRequest): void {
-  if (
-    (request as unknown) == null ||
-    typeof request !== 'object'
-  ) {
+function validateRequest(
+  request: unknown,
+): asserts request is EnrichmentRequest {
+  if (request == null || typeof request !== 'object') {
     throw new ClientError(
       'Request must be a valid object',
       {
@@ -82,9 +101,10 @@ function validateRequest(request: EnrichmentRequest): void {
       },
     )
   }
+  const r = request as Record<string, unknown>
   if (
-    typeof request.content !== 'string' ||
-    request.content.trim().length === 0
+    typeof r['content'] !== 'string' ||
+    r['content'].trim().length === 0
   ) {
     throw new ClientError(
       'Request content must be a non-empty string',
@@ -94,8 +114,8 @@ function validateRequest(request: EnrichmentRequest): void {
     )
   }
   if (
-    typeof request.countryCode !== 'string' ||
-    !/^[A-Z]{2}$/.test(request.countryCode)
+    typeof r['countryCode'] !== 'string' ||
+    !/^[A-Z]{2}$/.test(r['countryCode'])
   ) {
     throw new ClientError(
       'Request countryCode must be a 2-letter uppercase ISO country code (e.g., "GB")',
@@ -203,12 +223,10 @@ export class Client implements EnrichmentService {
    */
   public static readonly BASE_URL = DEFAULT_ENDPOINT
 
-  private static readonly SDK_VERSION = SDK_VERSION
-
   private readonly timeoutMs: number
   private readonly endpoint: string
   private readonly transport: HttpTransport
-  private readonly headers: Record<string, string>
+  private readonly baseHeaders: Record<string, string>
 
   public constructor(options: ClientOptions) {
     if (
@@ -258,13 +276,12 @@ export class Client implements EnrichmentService {
         ? { send: rawTransport }
         : rawTransport
 
-    // Compute and freeze headers once at initialization (perf optimization)
-    this.headers = Object.freeze({
-      'Content-Type': 'application/json',
+    // Compute and freeze base headers once at initialization (perf optimization)
+    this.baseHeaders = Object.freeze({
       Accept: 'application/json',
       Authorization: `Bearer ${trimmedApiKey}`,
-      'X-SDK-Version': Client.SDK_VERSION,
-      'User-Agent': `xyo-sdk-node/${Client.SDK_VERSION}`,
+      'X-SDK-Version': SDK_VERSION,
+      'User-Agent': `xyo-sdk-node/${SDK_VERSION}`,
     })
   }
 
@@ -283,7 +300,10 @@ export class Client implements EnrichmentService {
         `${this.endpoint}/v1/ai/finance/enrichment/transaction`,
         {
           method: 'POST',
-          headers: this.headers,
+          headers: {
+            ...this.baseHeaders,
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify(request),
           timeout: this.timeoutMs,
         },
@@ -338,7 +358,7 @@ export class Client implements EnrichmentService {
       )
     }
     for (const req of request) {
-      validateRequest(req as EnrichmentRequest)
+      validateRequest(req)
     }
 
     let resp: HttpTransportResponse<EnrichTransactionCollectionResponse>
@@ -348,7 +368,10 @@ export class Client implements EnrichmentService {
           `${this.endpoint}/v1/ai/finance/enrichment/transactions`,
           {
             method: 'POST',
-            headers: this.headers,
+            headers: {
+              ...this.baseHeaders,
+              'Content-Type': 'application/json',
+            },
             body: JSON.stringify(request),
             timeout: this.timeoutMs,
           },
@@ -405,7 +428,7 @@ export class Client implements EnrichmentService {
         `${this.endpoint}/v1/ai/finance/enrichment/transactions/status/${encodeURIComponent(id)}`,
         {
           method: 'GET',
-          headers: this.headers,
+          headers: this.baseHeaders,
           timeout: this.timeoutMs,
         },
       )

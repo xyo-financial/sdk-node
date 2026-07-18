@@ -1,10 +1,10 @@
-import eslint from '@eslint/js';
-import tseslint from 'typescript-eslint';
+import eslint from '@eslint/js'
+import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   eslint.configs.recommended,
-  tseslint.configs.recommended,
-  tseslint.configs.recommendedTypeChecked,
+  tseslint.configs.strictTypeChecked,
+  tseslint.configs.stylisticTypeChecked,
   {
     languageOptions: {
       parserOptions: {
@@ -13,9 +13,4 @@ export default tseslint.config(
       },
     },
   },
-  tseslint.configs.strictTypeChecked,
-  tseslint.configs.stylistic,
-  tseslint.configs.stylisticTypeChecked,
-);
-
-
+)

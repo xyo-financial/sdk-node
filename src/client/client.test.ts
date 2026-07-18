@@ -13,30 +13,36 @@ import {
 } from '../enrichment/enrichment'
 import { ClientError } from './error'
 
+function createMockResponse<U>(
+  status: number,
+  responseBody: string | unknown,
+): HttpTransportResponse<U> {
+  return {
+    status,
+    async text() {
+      return typeof responseBody === 'string'
+        ? responseBody
+        : JSON.stringify(responseBody)
+    },
+    async json() {
+      return (
+        typeof responseBody === 'string'
+          ? JSON.parse(responseBody)
+          : responseBody
+      ) as U
+    },
+  }
+}
+
 function createMockTransport<T>(
   status: number,
   responseBody: string | T,
 ): HttpTransport {
   return {
     send<U>(): Promise<HttpTransportResponse<U>> {
-      const mockedResponse: HttpTransportResponse<U> = {
-        status,
-        text() {
-          return Promise.resolve(
-            typeof responseBody === 'string'
-              ? responseBody
-              : JSON.stringify(responseBody),
-          )
-        },
-        json() {
-          return Promise.resolve(
-            (typeof responseBody === 'string'
-              ? JSON.parse(responseBody)
-              : responseBody) as U,
-          )
-        },
-      }
-      return Promise.resolve(mockedResponse)
+      return Promise.resolve(
+        createMockResponse<U>(status, responseBody),
+      )
     },
   }
 }
@@ -55,24 +61,9 @@ function createCapturingTransport<T>(
       options: HttpTransportOptions,
     ): Promise<HttpTransportResponse<U>> {
       calls.push({ url, options })
-      const mockedResponse: HttpTransportResponse<U> = {
-        status,
-        text() {
-          return Promise.resolve(
-            typeof responseBody === 'string'
-              ? responseBody
-              : JSON.stringify(responseBody),
-          )
-        },
-        json() {
-          return Promise.resolve(
-            (typeof responseBody === 'string'
-              ? JSON.parse(responseBody)
-              : responseBody) as U,
-          )
-        },
-      }
-      return Promise.resolve(mockedResponse)
+      return Promise.resolve(
+        createMockResponse<U>(status, responseBody),
+      )
     },
   }
   return { transport, calls }
@@ -332,7 +323,7 @@ void describe('Client Enrichment Suite', () => {
       )
     })
 
-    test('enrichTransactionCollectionStatus builds correct HTTP URL with escaping', async () => {
+    test('enrichTransactionCollectionStatus builds correct HTTP URL with escaping and no Content-Type', async () => {
       const mockResponse = {
         status: EnrichmentCollectionStatus.Ready,
       }
@@ -360,6 +351,12 @@ void describe('Client Enrichment Suite', () => {
       assert.strictEqual(
         call.url,
         `https://api.xyo.financial/v1/ai/finance/enrichment/transactions/status/${encodeURIComponent(jobId)}`,
+      )
+      assert.strictEqual(call.options.method, 'GET')
+      // Content-Type should NOT be present on GET request
+      assert.strictEqual(
+        call.options.headers['Content-Type'],
+        undefined,
       )
     })
   })
@@ -775,6 +772,37 @@ void describe('Client Enrichment Suite', () => {
             'API Error: [FieldValidationException] missing field - content is required (Type: ValidationError) | API Error: [FieldValidationException] invalid length - countryCode must be 2 chars (Type: ValidationError)',
           )
           assert.strictEqual(err.errors.length, 2)
+          return true
+        },
+      )
+    })
+
+    test('correctly falls back to raw body if body is not JSON (P3-02)', async () => {
+      const nonJsonBody = 'Internal Gateway Error'
+      const sut = new Client({
+        apiKey: 'test-key',
+        transport: createMockTransport(502, nonJsonBody),
+      })
+
+      await assert.rejects(
+        () =>
+          sut.enrichTransaction({
+            content: 'Syniol Software Consultancy',
+            countryCode: 'GB',
+          }),
+        (err: any) => {
+          assert.ok(err instanceof ClientError)
+          assert.strictEqual(err.statusCode, 502)
+          assert.strictEqual(err.category, 'server_error')
+          assert.strictEqual(
+            err.message,
+            'Internal Gateway Error',
+          )
+          assert.strictEqual(
+            err.rawBody,
+            'Internal Gateway Error',
+          )
+          assert.strictEqual(err.errors.length, 0)
           return true
         },
       )

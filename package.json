@@ -13,8 +13,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/update-version.js && rm -rf ./dist && tsc",
-    "prepublishOnly": "node scripts/update-version.js && rm -rf ./dist && tsc",
+    "build": "rm -rf ./dist && tsc",
+    "prepublishOnly": "rm -rf ./dist && tsc",
     "lint": "npx prettier -c src/**/*.ts && eslint ./src --ignore-pattern \"src/**/*.test.*\"",
     "test": "node --test --import=tsx --experimental-test-coverage src/**/*.test.ts"
   },
