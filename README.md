@@ -1,3 +1,5 @@
+# XYO.Financial SDK for Node.js
+
 <p align="center">
     <a href="https://xyo.financial" target="blank"><img alt="XYO Financial Logo" width="50%" src="https://github.com/syniol/xyo-sdk-node/blob/main/docs/mascot.png?raw=true" /></a>
     <br/>
@@ -156,5 +158,8 @@ The SDK normalises all operational errors into a structured `ClientError` class,
 
 For Tier-1 enterprise support, SLAs, and dedicated technical account management, please contact your Syniol Limited account representative or reach out via [support@xyo.financial](mailto:support@xyo.financial).
 
----
-*Copyright &copy; 2026 Syniol Limited. All rights reserved. XYO Financial is a trademark of Syniol Limited.*
+
+## License
+This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICENSE) file for details.
+
+Copyright &copy; 2026 Syniol Limited.

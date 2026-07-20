@@ -1,6 +1,6 @@
 {
   "name": "xyo-sdk",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "XYO SDK to connect and consume AI Banking Transaction Enrichment",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -32,7 +32,7 @@
     "Enrichment"
   ],
   "author": "Hadi Tajallaei <hadi@syniol.com>",
-  "license": "Apache-2.0",
+  "license": "BSD-3-Clause",
   "bugs": {
     "url": "https://github.com/syniol/xyo-sdk-node/issues"
   },
