@@ -1,13 +1,13 @@
 # XYO.Financial SDK for Node.js
 
 <p align="center">
-    <a href="https://xyo.financial" target="blank"><img alt="XYO Financial Logo" width="50%" src="https://github.com/syniol/xyo-sdk-node/blob/main/docs/mascot.png?raw=true" /></a>
+    <a href="https://xyo.financial" target="blank"><img alt="XYO Financial Logo" width="50%" src="https://github.com/xyo-financial/sdk-node/blob/main/docs/mascot.png?raw=true" /></a>
     <br/>
     <b>Enterprise-Grade Financial Transaction Enrichment SDK for Node.js</b>
 </p>
 
 <p align="center">
-    <img src="https://github.com/syniol/xyo-sdk-node/actions/workflows/release.yml/badge.svg" alt="Release Pipeline" />
+    <img src="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml/badge.svg" alt="Release Pipeline" />
     <img src="https://img.shields.io/badge/Security-npm%20audit%20passing-success" alt="Security Audit" />
     <img src="https://img.shields.io/badge/TypeScript-Strict-blue" alt="TypeScript Strict" />
     <img src="https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen" alt="Node Compatibility" />
