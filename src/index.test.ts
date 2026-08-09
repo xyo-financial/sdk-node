@@ -1447,4 +1447,156 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       )
     })
   })
+
+  describe('7. downloadEnrichmentCollection (Bulk Results Archive Download)', () => {
+    it('successfully downloads, decompresses tar.gz, and parses JSON results', async () => {
+      const { gzipSync } = await import('node:zlib')
+      
+      const file1 = {
+        name: 'result_0.json',
+        content: JSON.stringify({
+          merchant: 'Starbucks Coffee',
+          description: 'Coffee Shop Chain',
+          categories: ['Food & Drink', 'Coffee'],
+          logo: 'data:image/png;base64,...',
+          location: 'Seattle, US',
+          address: '1912 Pike Place, Seattle',
+        }),
+      }
+      const file2 = {
+        name: 'result_1.json',
+        content: JSON.stringify({
+          merchant: 'Uber Technologies',
+          description: 'Ridesharing & Delivery',
+          categories: ['Transportation', 'Rideshare'],
+          logo: 'data:image/png;base64,...',
+          location: 'San Francisco, US',
+          address: '1455 Market St, San Francisco',
+        }),
+      }
+
+      // Create valid tar buffer
+      const blocks: Buffer[] = []
+      for (const file of [file1, file2]) {
+        const header = Buffer.alloc(512, 0)
+        const contentBuf = Buffer.from(file.content, 'utf8')
+        header.write(file.name, 0, 100, 'utf8')
+        header.write('0000644\0', 100, 8, 'ascii')
+        header.write('0000000\0', 108, 8, 'ascii')
+        header.write('0000000\0', 116, 8, 'ascii')
+        header.write(
+          contentBuf.length.toString(8).padStart(11, '0') + '\0',
+          124,
+          12,
+          'ascii',
+        )
+        header.write('00000000000\0', 136, 12, 'ascii')
+        header.fill(32, 148, 156)
+        header.write('0', 156, 1, 'ascii')
+        header.write('ustar\0', 257, 6, 'ascii')
+        header.write('00', 263, 2, 'ascii')
+
+        let sum = 0
+        for (let i = 0; i < 512; i++) sum += header[i]
+        header.write(
+          sum.toString(8).padStart(6, '0') + '\0 ',
+          148,
+          8,
+          'ascii',
+        )
+
+        blocks.push(header)
+        blocks.push(contentBuf)
+        const rem = contentBuf.length % 512
+        if (rem > 0) {
+          blocks.push(Buffer.alloc(512 - rem, 0))
+        }
+      }
+      blocks.push(Buffer.alloc(1024, 0))
+      const tarGz = gzipSync(Buffer.concat(blocks))
+
+      mockFetchHandler = async (_url, init) => {
+        return new Response(tarGz, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/gzip',
+          },
+        })
+      }
+
+      const client = new XYOClient({
+        apiKey: 'token-download',
+      })
+
+      const results = await client.downloadEnrichmentCollection(
+        'https://api.xyo.financial/v1/download/job_123.tar.gz',
+      )
+
+      assert.equal(results.length, 2)
+      assert.equal(results[0].merchant, 'Starbucks Coffee')
+      assert.equal(results[0].location, 'Seattle, US')
+      assert.deepEqual(results[0].categories, [
+        'Food & Drink',
+        'Coffee',
+      ])
+      assert.equal(results[1].merchant, 'Uber Technologies')
+
+      assert.equal(capturedRequests.length, 1)
+      assert.equal(
+        capturedRequests[0].url,
+        'https://api.xyo.financial/v1/download/job_123.tar.gz',
+      )
+      assert.equal(
+        capturedRequests[0].headers['authorization'],
+        'Bearer token-download',
+      )
+      assert.equal(
+        capturedRequests[0].headers['accept'],
+        'application/gzip',
+      )
+
+      // Test alias under client.enrichment.downloadEnrichmentCollection
+      const resultsAlias =
+        await client.enrichment.downloadEnrichmentCollection(
+          'https://api.xyo.financial/v1/download/job_123.tar.gz',
+        )
+      assert.equal(resultsAlias.length, 2)
+    })
+
+    it('handles non-200 HTTP status code', async () => {
+      mockFetchHandler = async () => {
+        return new Response('Not Found', { status: 404 })
+      }
+
+      const client = new XYOClient({ apiKey: 'token' })
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection(
+            'https://api.xyo.financial/download/missing.tar.gz',
+          )
+        },
+        /downloadEnrichmentCollection: unexpected HTTP status 404/,
+      )
+    })
+
+    it('handles null response body', async () => {
+      mockFetchHandler = async () => {
+        const resp = new Response(null, { status: 200 })
+        Object.defineProperty(resp, 'body', { value: null })
+        return resp
+      }
+
+      const client = new XYOClient({ apiKey: 'token' })
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection(
+            'https://api.xyo.financial/download/null-body.tar.gz',
+          )
+        },
+        /downloadEnrichmentCollection: response body is null/,
+      )
+    })
+  })
 })
+
+

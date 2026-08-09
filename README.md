@@ -194,6 +194,27 @@ async function waitForBatchCompletion(
 }
 ```
 
+### 4. Downloading Bulk Results Archive
+
+Once a batch status is `READY`, retrieve and decompress the entire `.tar.gz` archive directly into an array of typed `EnrichmentResponse` objects.
+
+```typescript
+import { xyoClient } from './client'
+import { type EnrichmentResponse } from 'xyo-sdk'
+
+async function fetchBatchResults(downloadUrl: string): Promise<EnrichmentResponse[]> {
+  // Downloads, decompresses gzip stream, and parses JSON results
+  const results: EnrichmentResponse[] = await xyoClient.downloadEnrichmentCollection(downloadUrl)
+
+  console.info(`Successfully decoded ${results.length} enriched transactions:`)
+  for (const item of results) {
+    console.info(`- ${item.merchant} (${item.categories.join(', ')}): ${item.description}`)
+  }
+
+  return results
+}
+```
+
 ---
 
 ## 🛡 RFC 7807 Error Handling
