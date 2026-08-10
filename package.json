@@ -33,7 +33,7 @@
     "Enrichment"
   ],
   "author": "Hadi Tajallaei <hadi@syniol.com>",
-  "license": "BSD-3-Clause",
+  "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/xyo-financial/sdk-node/issues"
   },

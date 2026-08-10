@@ -189,3 +189,9 @@ docker build -f deploy/Dockerfile . -t xyo-sdk-node:latest --no-cache
 ## 7. Security Vulnerability Reporting
 
 If you discover a potential security vulnerability in this SDK or the XYO Financial platform, please **do not** open a public GitHub issue. Refer to [`SECURITY.md`](SECURITY.md) and report it directly to our security team at [security@syniol.com](mailto:security@syniol.com).
+
+---
+
+## 8. License
+
+By contributing to the XYO Financial Node.js SDK, you agree that your contributions will be licensed under the [Apache License, Version 2.0](LICENSE) (Apache-2.0).

@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/TypeScript-Strict%205.x-3178C6?style=flat-square" alt="TypeScript Strict" />
   <img src="https://img.shields.io/badge/RFC%207807-Compliant-success?style=flat-square" alt="RFC 7807 Problem Details" />
   <img src="https://img.shields.io/badge/Dependencies-0%20Runtime-blue?style=flat-square" alt="Zero Runtime Dependencies" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSD--3--Clause-blue.svg?style=flat-square" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg?style=flat-square" alt="License" /></a>
 </p>
 
 ---
@@ -389,6 +389,6 @@ const api = new EnrichmentApi(config)
 
 ## 📄 License
 
-This SDK is released under the **BSD 3-Clause License**. See the [LICENSE](LICENSE) file for complete details.
+This SDK is released under the **Apache License, Version 2.0** (Apache-2.0). See the [LICENSE](LICENSE) file for complete details.
 
 Copyright &copy; 2026 Syniol Limited. All rights reserved.
