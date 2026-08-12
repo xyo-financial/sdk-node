@@ -1,0 +1,73 @@
+name: Generate Node SDK
+
+on:
+  repository_dispatch:
+    types: [spec_tagged, spec_updated]
+  workflow_dispatch:
+    inputs:
+      spec_tag:
+        description: 'Tag or branch in xyo-financial/specs to generate from'
+        required: false
+        default: 'main'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout SDK Repository
+        uses: actions/checkout@v4
+
+      - name: Checkout OpenAPI Spec
+        uses: actions/checkout@v4
+        with:
+          repository: xyo-financial/specs
+          ref: ${{ github.event.client_payload.tag || inputs.spec_tag || 'main' }}
+          path: specs
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Generate API Client
+        run: |
+          # Clean previous generated code
+          rm -rf src/generated
+
+          # Run openapi-generator
+          npx -y @openapitools/openapi-generator-cli generate \
+            -i specs/openapi.yml \
+            -g typescript-fetch \
+            -o ./src/generated
+
+          # Remove generator noise files
+          rm -f src/generated/git_push.sh \
+                src/generated/.travis.yml \
+                src/generated/README.md
+          rm -rf src/generated/test
+
+          # Clean up the spec folder so it doesn't get committed
+          rm -rf specs
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build SDK
+        run: npm run build
+
+      - name: Run Tests
+        run: npm test
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update generated Node SDK from spec ${{ github.event.client_payload.tag || inputs.spec_tag || 'latest' }}"
+          title: "Automated SDK Update"
+          body: "This PR automatically updates the generated `typescript-fetch` client based on OpenAPI spec ${{ github.event.client_payload.tag || inputs.spec_tag || 'latest' }}."
+          branch: "chore/auto-update-sdk"
+          delete-branch: true

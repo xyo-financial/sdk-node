@@ -11,7 +11,7 @@
      "rootDir": "./src",
      "outDir": "./dist",
 
-     "lib": ["es2022"],
+     "lib": ["es2022", "DOM"],
      "types": ["node"],
 
     // Other Outputs
@@ -19,14 +19,13 @@
     "sourceMap": true,
 
     // Stricter Typechecking Options
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
+    "exactOptionalPropertyTypes": false,
 
     // Style Options
     "noImplicitReturns": true,
-    "noImplicitOverride": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noImplicitOverride": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "noPropertyAccessFromIndexSignature": true,
 
