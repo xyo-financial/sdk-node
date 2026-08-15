@@ -398,6 +398,25 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       assert.equal(response.location, 'London, GB')
     })
 
+    it('rejects invalid countryCode that is not 2 characters', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+
+      await assert.rejects(
+        async () => {
+          await client.enrichTransaction({
+            content: 'TEST TX',
+            countryCode: 'USA',
+          })
+        },
+        (err: Error) => {
+          assert.ok(
+            err.message.includes('ISO 3166-1 alpha-2 two-letter code'),
+          )
+          return true
+        },
+      )
+    })
+
     it('handles 400 Bad Request error with RFC 7807 problem details', async () => {
       const problemDetails: ErrorResponse = {
         errors: [
@@ -757,6 +776,32 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       )
     })
 
+    it('supports xApiUser in client.enrichTransactions and rejects CRLF injection', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse(mockBulkResponse, 200)
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      await client.enrichTransactions(
+        [{ content: 'TX', countryCode: 'GB' }],
+        'user-abc',
+      )
+      assert.equal(capturedRequests[0].headers['x-api-user'], 'user-abc')
+
+      await assert.rejects(
+        async () => {
+          await client.enrichTransactions(
+            [{ content: 'TX', countryCode: 'GB' }],
+            'user\r\nInjected: evil',
+          )
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('CR or LF characters'))
+          return true
+        },
+      )
+    })
+
     it('handles bulk submission 400 Bad Request error', async () => {
       const errorPayload: ErrorResponse = {
         errors: [
@@ -951,7 +996,27 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       )
     })
 
-    it('throws RequiredError when ID parameter is null or undefined', async () => {
+    it('supports xApiUser in client.getEnrichmentStatus and rejects CRLF injection', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ status: 'READY' }, 200)
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      await client.getEnrichmentStatus('job-xyz', 'tenant-user-1')
+      assert.equal(capturedRequests[0].headers['x-api-user'], 'tenant-user-1')
+
+      await assert.rejects(
+        async () => {
+          await client.getEnrichmentStatus('job-xyz', 'user\r\nEvil: true')
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('CR or LF characters'))
+          return true
+        },
+      )
+    })
+
+    it('throws Error when ID parameter is null or empty', async () => {
       const client = new XYOClient({ apiKey: 'token' })
 
       await assert.rejects(
@@ -959,10 +1024,18 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
           // @ts-expect-error Testing runtime null guard
           await client.getEnrichmentStatus(null)
         },
-        (err: unknown) => {
-          assert.ok(err instanceof RequiredError)
-          assert.equal(err.name, 'RequiredError')
-          assert.equal(err.field, 'id')
+        (err: Error) => {
+          assert.ok(err.message.includes('id cannot be empty'))
+          return true
+        },
+      )
+
+      await assert.rejects(
+        async () => {
+          await client.getEnrichmentStatus('')
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('id cannot be empty'))
           return true
         },
       )

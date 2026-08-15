@@ -177,6 +177,11 @@ export class XYOClient {
       enrichTransaction: async (
         request: EnrichmentRequest,
       ): Promise<EnrichmentResponse> => {
+        if (request.countryCode && request.countryCode.trim().length !== 2) {
+          throw new Error(
+            'enrichTransaction: countryCode must be an ISO 3166-1 alpha-2 two-letter code',
+          )
+        }
         return this._api.enrichTransaction({
           enrichmentRequest: request,
         })
@@ -187,8 +192,13 @@ export class XYOClient {
        */
       enrichTransactions: async (
         transactions: EnrichTransactionsRequestInner[],
+        xApiUser?: string,
       ): Promise<EnrichTransactionCollectionResponse> => {
+        if (xApiUser && (xApiUser.includes('\r') || xApiUser.includes('\n'))) {
+          throw new Error('enrichTransactions: xApiUser must not contain CR or LF characters')
+        }
         return this._api.enrichTransactions({
+          xApiUser,
           enrichTransactionsRequestInner: transactions,
         })
       },
@@ -198,8 +208,15 @@ export class XYOClient {
        */
       getEnrichmentStatus: async (
         id: string,
+        xApiUser?: string,
       ): Promise<EnrichmentCollectionStatusResponse> => {
-        return this._api.getEnrichmentStatus({ id })
+        if (typeof id !== 'string' || !id.trim()) {
+          throw new Error('getEnrichmentStatus: id cannot be empty')
+        }
+        if (xApiUser && (xApiUser.includes('\r') || xApiUser.includes('\n'))) {
+          throw new Error('getEnrichmentStatus: xApiUser must not contain CR or LF characters')
+        }
+        return this._api.getEnrichmentStatus({ id, xApiUser })
       },
 
       /**
@@ -228,8 +245,9 @@ export class XYOClient {
    */
   public async enrichTransactions(
     transactions: EnrichTransactionsRequestInner[],
+    xApiUser?: string,
   ): Promise<EnrichTransactionCollectionResponse> {
-    return this.enrichment.enrichTransactions(transactions)
+    return this.enrichment.enrichTransactions(transactions, xApiUser)
   }
 
   /**
@@ -237,8 +255,9 @@ export class XYOClient {
    */
   public async getEnrichmentStatus(
     id: string,
+    xApiUser?: string,
   ): Promise<EnrichmentCollectionStatusResponse> {
-    return this.enrichment.getEnrichmentStatus(id)
+    return this.enrichment.getEnrichmentStatus(id, xApiUser)
   }
 
   /**
