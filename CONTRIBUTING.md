@@ -4,7 +4,7 @@ Thank you for contributing to the **XYO Financial Node.js SDK** (`xyo-sdk`). Thi
 
 ---
 
-## 1. Contribution Policy & Issue Reporting
+## 📋 1. Contribution Policy & Issue Reporting
 
 ### Contribution Policy
 Development, pull request reviews, and package publishing are maintained by **Syniol Limited** engineers.
@@ -22,7 +22,7 @@ If you discover a bug, have questions, or wish to propose an enhancement:
 
 ---
 
-## 2. Two-Layer Architecture
+## 🏗 2. Two-Layer Architecture
 
 The XYO Financial Node.js SDK is engineered with a strict **Two-Layer Architecture** separating auto-generated OpenAPI bindings from hand-crafted developer ergonomics.
 
@@ -71,7 +71,7 @@ The XYO Financial Node.js SDK is engineered with a strict **Two-Layer Architectu
 
 ---
 
-## 3. Contribution Workflow & Decision Matrix
+## 🔀 3. Contribution Workflow & Decision Matrix
 
 To maintain consistency across all official XYO Financial SDKs (Node.js, Python, Go, PHP, Rust, Java, C++), determine where your proposed change belongs:
 
@@ -86,7 +86,7 @@ To maintain consistency across all official XYO Financial SDKs (Node.js, Python,
 
 ---
 
-## 4. Code Generation
+## ⚙️ 4. Code Generation
 
 ### Automated Upstream Synchronization
 When a new release tag or specification update is pushed to [`xyo-financial/specs`](https://github.com/xyo-financial/specs), a GitHub Actions workflow automatically triggers a `repository_dispatch` event (`spec_tagged`, `spec_updated`) to this repository. The [`.github/workflows/generate.yml`](.github/workflows/generate.yml) workflow:
@@ -139,7 +139,7 @@ rm -rf src/generated/test
 
 ---
 
-## 5. Quality Gates & Verification Standards
+## 🛡 5. Quality Gates & Verification Standards
 
 All pull requests and contributions must pass the complete quality gate suite prior to review and merging:
 
@@ -175,7 +175,7 @@ docker build -f deploy/Dockerfile . -t xyo-sdk-node:latest --no-cache
 
 ---
 
-## 6. Coding Standards & Conventions
+## 📐 6. Coding Standards & Conventions
 
 - **Language & Runtime**: Modern TypeScript targeting Node.js `>= 22.0.0`.
 - **Zero Runtime Dependencies**: The SDK runtime relies exclusively on standard Web/Node APIs (native `fetch`, `Headers`, `Request`, `Response`, `node:zlib`, `node:stream`). Do not introduce external runtime dependencies without architectural approval.
@@ -186,12 +186,12 @@ docker build -f deploy/Dockerfile . -t xyo-sdk-node:latest --no-cache
 
 ---
 
-## 7. Security Vulnerability Reporting
+## 🔒 7. Security Vulnerability Reporting
 
 If you discover a potential security vulnerability in this SDK or the XYO Financial platform, please **do not** open a public GitHub issue. Refer to [`SECURITY.md`](SECURITY.md) and report it directly to our security team at [security@syniol.com](mailto:security@syniol.com).
 
 ---
 
-## 8. License
+## 📄 8. License
 
 By contributing to the XYO Financial Node.js SDK, you agree that your contributions will be licensed under the [Apache License, Version 2.0](LICENSE) (Apache-2.0).
