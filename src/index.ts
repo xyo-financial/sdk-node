@@ -93,10 +93,10 @@ function parseTar(
       )
     }
 
-    // Filename: bytes 0–99 (100 bytes max), NUL-terminated or 100-char non-NUL
+    // Filename: bytes 0–99, NUL-terminated
     const nameBuf = header.subarray(0, 100)
     const nameEnd = nameBuf.indexOf(0)
-    const name = nameBuf.subarray(0, nameEnd < 0 ? 100 : nameEnd).toString('utf8').trim()
+    const name = nameBuf.subarray(0, nameEnd < 0 ? 100 : nameEnd).toString('utf8')
 
     // Type flag: byte 156
     const typeFlag = String.fromCharCode(header[156])
@@ -304,10 +304,19 @@ export class XYOClient {
       // ignore parse error
     }
 
-    if (apiHost && parsedUrl.host.toLowerCase() === apiHost.toLowerCase()) {
-      const currentToken = await this._tokenSupplier?.()
-      if (currentToken) {
-        headers['Authorization'] = `Bearer ${currentToken}`
+    if (apiHost) {
+      const isApiHost = parsedUrl.host.toLowerCase() === apiHost.toLowerCase()
+      const isS3 = parsedUrl.host.toLowerCase().endsWith('.amazonaws.com')
+      
+      if (!isApiHost && !isS3) {
+        throw new Error(`downloadEnrichmentCollection: domain "${parsedUrl.host}" is not permitted for secure archive downloads.`)
+      }
+
+      if (isApiHost) {
+        const currentToken = await this._tokenSupplier?.()
+        if (currentToken) {
+          headers['Authorization'] = `Bearer ${currentToken}`
+        }
       }
     }
 
@@ -328,7 +337,7 @@ export class XYOClient {
       const ct = contentType.toLowerCase()
       if (!ct.includes('gzip') && !ct.includes('tar') && !ct.includes('octet-stream') && !ct.includes('binary')) {
         throw new Error(
-          `downloadEnrichmentCollection: unexpected Content-Type "${contentType}" received when expecting binary archive`,
+          `downloadEnrichmentCollection: unexpected Content-Type "${contentType}" received when expecting binary archive.`,
         )
       }
     }
@@ -337,17 +346,20 @@ export class XYOClient {
       throw new Error('downloadEnrichmentCollection: response body is null')
     }
 
-    // Collect all compressed bytes with max bytes guard using universal async iteration
+    // Collect all compressed bytes with max bytes guard
     let totalCompressedBytes = 0
     const compressedChunks: Buffer[] = []
-    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array | Buffer>) {
-      totalCompressedBytes += chunk.length
+    
+    // Support both Node.js Streams and Web Streams via Async Iteration
+    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array | string>) {
+      const bufChunk = Buffer.from(chunk)
+      totalCompressedBytes += bufChunk.length
       if (totalCompressedBytes > this._maxArchiveBytes) {
         throw new Error(
           `downloadEnrichmentCollection: compressed archive exceeded maximum allowed size of ${String(this._maxArchiveBytes)} bytes`,
         )
       }
-      compressedChunks.push(Buffer.from(chunk))
+      compressedChunks.push(bufChunk)
     }
     const compressed = Buffer.concat(compressedChunks)
 
