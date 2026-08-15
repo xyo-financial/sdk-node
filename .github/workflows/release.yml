@@ -156,9 +156,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify Token and Publish to NPM
+      - name: Publish to NPM
         run: |
-          npm whoami
           npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
