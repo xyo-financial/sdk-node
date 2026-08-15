@@ -93,16 +93,18 @@ function parseTar(
       )
     }
 
-    // Filename: bytes 0–99, NUL-terminated
-    const nameEnd = header.indexOf(0, 0)
-    const name = header.subarray(0, nameEnd < 0 ? 100 : nameEnd).toString('utf8')
+    // Filename: bytes 0–99 (100 bytes max), NUL-terminated or 100-char non-NUL
+    const nameBuf = header.subarray(0, 100)
+    const nameEnd = nameBuf.indexOf(0)
+    const name = nameBuf.subarray(0, nameEnd < 0 ? 100 : nameEnd).toString('utf8').trim()
 
     // Type flag: byte 156
     const typeFlag = String.fromCharCode(header[156])
 
     // File size: bytes 124–135 (octal ASCII, NUL/space padded)
     const sizeStr = header.subarray(124, 136).toString('ascii').replace(/\0/g, '').trim()
-    const size = parseInt(sizeStr, 8) || 0
+    const rawSize = parseInt(sizeStr, 8)
+    const size = Math.max(0, isNaN(rawSize) ? 0 : rawSize)
 
     if (size > maxEntryBytes) {
       throw new Error(
@@ -116,8 +118,9 @@ function parseTar(
     const isPathTraversal = name.includes('..') || name.startsWith('/') || name.startsWith('\\')
 
     if (typeFlag !== '5' && name && !isPathTraversal) {
-      // Regular file entry
-      const content = buf.subarray(offset, offset + size)
+      // Regular file entry with bounds protection
+      const endOffset = Math.min(offset + size, buf.length)
+      const content = buf.subarray(offset, endOffset)
       entries.push({ name, content: Buffer.from(content) })
     }
 
@@ -324,9 +327,8 @@ export class XYOClient {
     if (contentType) {
       const ct = contentType.toLowerCase()
       if (!ct.includes('gzip') && !ct.includes('tar') && !ct.includes('octet-stream') && !ct.includes('binary')) {
-        const preview = (await response.text()).slice(0, 512)
         throw new Error(
-          `downloadEnrichmentCollection: unexpected Content-Type "${contentType}" received when expecting binary archive (body preview: ${preview.trim()})`,
+          `downloadEnrichmentCollection: unexpected Content-Type "${contentType}" received when expecting binary archive`,
         )
       }
     }
@@ -335,21 +337,17 @@ export class XYOClient {
       throw new Error('downloadEnrichmentCollection: response body is null')
     }
 
-    // Collect all compressed bytes with max bytes guard
+    // Collect all compressed bytes with max bytes guard using universal async iteration
     let totalCompressedBytes = 0
     const compressedChunks: Buffer[] = []
-    const reader = response.body.getReader()
-    let chunk = await reader.read()
-
-    while (!chunk.done) {
-      totalCompressedBytes += chunk.value.length
+    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array | Buffer>) {
+      totalCompressedBytes += chunk.length
       if (totalCompressedBytes > this._maxArchiveBytes) {
         throw new Error(
           `downloadEnrichmentCollection: compressed archive exceeded maximum allowed size of ${String(this._maxArchiveBytes)} bytes`,
         )
       }
-      compressedChunks.push(Buffer.from(chunk.value))
-      chunk = await reader.read()
+      compressedChunks.push(Buffer.from(chunk))
     }
     const compressed = Buffer.concat(compressedChunks)
 
