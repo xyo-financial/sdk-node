@@ -1727,6 +1727,78 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       assert.equal(capturedRequests[0].headers['authorization'], 'Bearer initial-token-1')
       assert.equal(capturedRequests[1].headers['authorization'], 'Bearer rotated-token-2')
     })
+
+    it('supports custom fetch returning a Node.js Readable stream', async () => {
+      const { gzipSync } = await import('node:zlib')
+      const { Readable } = await import('node:stream')
+
+      const jsonPayload = JSON.stringify({
+        merchant: 'Blue Bottle Coffee',
+        description: 'Specialty Coffee',
+        categories: ['Food & Drink'],
+      })
+      const contentBuf = Buffer.from(jsonPayload, 'utf8')
+      const header = Buffer.alloc(512, 0)
+      header.write('blue_bottle.json', 0, 100, 'utf8')
+      header.write(contentBuf.length.toString(8).padStart(11, '0') + '\0', 124, 12, 'ascii')
+      header.write('0', 156, 1, 'ascii')
+      const tarBuf = Buffer.concat([header, contentBuf, Buffer.alloc(512 - (contentBuf.length % 512 || 512), 0), Buffer.alloc(1024, 0)])
+      const gzipped = gzipSync(tarBuf)
+
+      const customFetch: typeof fetch = async () => {
+        const stream = Readable.from(gzipped)
+        return {
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/gzip' }),
+          body: stream,
+        } as unknown as Response
+      }
+
+      const client = new XYOClient({
+        apiKey: 'test-token',
+        fetchApi: customFetch,
+      })
+
+      const results = await client.downloadEnrichmentCollection(
+        'https://api.xyo.financial/v1/download/stream.tar.gz',
+      )
+      assert.equal(results.length, 1)
+      assert.equal(results[0].merchant, 'Blue Bottle Coffee')
+    })
+
+    it('correctly handles exact 100-character filenames in tar archive', async () => {
+      const { gzipSync } = await import('node:zlib')
+
+      // Exactly 100 ASCII characters without trailing NUL in bytes 0..99
+      const exact100Name = 'a'.repeat(95) + '.json'
+      assert.equal(exact100Name.length, 100)
+
+      const jsonPayload = JSON.stringify({
+        merchant: '100 Char Merchant',
+        description: 'Desc',
+        categories: [],
+      })
+      const contentBuf = Buffer.from(jsonPayload, 'utf8')
+      const header = Buffer.alloc(512, 0)
+      header.write(exact100Name, 0, 100, 'utf8')
+      header.write('0000644\0', 100, 8, 'ascii')
+      header.write(contentBuf.length.toString(8).padStart(11, '0') + '\0', 124, 12, 'ascii')
+      header.write('0', 156, 1, 'ascii')
+      const tarBuf = Buffer.concat([header, contentBuf, Buffer.alloc(512 - (contentBuf.length % 512 || 512), 0), Buffer.alloc(1024, 0)])
+      const gzipped = gzipSync(tarBuf)
+
+      mockFetchHandler = async () => {
+        return new Response(gzipped, {
+          status: 200,
+          headers: { 'content-type': 'application/gzip' },
+        })
+      }
+
+      const client = new XYOClient({ apiKey: 'token' })
+      const results = await client.downloadEnrichmentCollection('https://api.xyo.financial/download/100chars.tar.gz')
+      assert.equal(results.length, 1)
+      assert.equal(results[0].merchant, '100 Char Merchant')
+    })
   })
 })
 
