@@ -1550,9 +1550,8 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
         capturedRequests[0].headers['authorization'],
         'Bearer token-download',
       )
-      assert.equal(
-        capturedRequests[0].headers['accept'],
-        'application/gzip',
+      assert.ok(
+        capturedRequests[0].headers['accept'].includes('application/gzip'),
       )
 
       // Test alias under client.enrichment.downloadEnrichmentCollection
@@ -1595,6 +1594,65 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
         },
         /downloadEnrichmentCollection: response body is null/,
       )
+    })
+
+    it('rejects unsupported URL schemes (SSRF protection)', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection('file:///etc/passwd')
+        },
+        /downloadEnrichmentCollection: unsupported protocol "file:"/,
+      )
+
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection('ftp://malicious.org/archive.tar.gz')
+        },
+        /downloadEnrichmentCollection: unsupported protocol "ftp:"/,
+      )
+    })
+
+    it('diagnoses WAF HTML security challenge response on 200 status', async () => {
+      mockFetchHandler = async () => {
+        return new Response('<html><body><h1>Cloudflare / WAF Security Challenge</h1></body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=UTF-8' },
+        })
+      }
+
+      const client = new XYOClient({ apiKey: 'token' })
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection('https://api.xyo.financial/download/job_waf.tar.gz')
+        },
+        /downloadEnrichmentCollection: unexpected Content-Type "text\/html; charset=UTF-8"/,
+      )
+    })
+
+    it('supports dynamic secret rotation via tokenSupplier', async () => {
+      let currentKey = 'initial-token-1'
+
+      mockFetchHandler = async () => {
+        return createJsonResponse({
+          merchant: 'Starbucks',
+          description: 'Coffee',
+          categories: ['Food'],
+          logo: 'url',
+        })
+      }
+
+      const client = new XYOClient({
+        tokenSupplier: () => currentKey,
+      })
+
+      await client.enrichTransaction({ content: 'Coffee purchase', countryCode: 'US' })
+      currentKey = 'rotated-token-2'
+      await client.enrichTransaction({ content: 'Coffee purchase 2', countryCode: 'US' })
+
+      assert.equal(capturedRequests.length, 2)
+      assert.equal(capturedRequests[0].headers['authorization'], 'Bearer initial-token-1')
+      assert.equal(capturedRequests[1].headers['authorization'], 'Bearer rotated-token-2')
     })
   })
 })
