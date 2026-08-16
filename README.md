@@ -1,21 +1,24 @@
-# XYO Financial SDK for Node.js & TypeScript
-
 <p align="center">
   <a href="https://xyo.financial" target="_blank" rel="noopener noreferrer">
-    <img alt="XYO Financial Logo" width="45%" src="https://github.com/xyo-financial/sdk-node/blob/main/docs/mascot.png?raw=true" />
+    <img alt="XYO Financial Node.js Mascot" width="380" src="docs/mascot.png" />
   </a>
-  <br/>
-  <b>Financial Transaction Enrichment SDK for Node.js & TypeScript</b>
 </p>
+
+<h1 align="center">XYO Financial SDK for Node.js & TypeScript</h1>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/xyo-sdk"><img src="https://img.shields.io/npm/v/xyo-sdk.svg?style=flat-square&color=blue" alt="npm version" /></a>
-  <a href="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/xyo-financial/sdk-node/release.yml?branch=main&style=flat-square&label=build" alt="Build Status" /></a>
+  <a href="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml"><img src="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml/badge.svg?branch=main&style=flat-square&label=build" alt="Build Status" /></a>
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.0.0-brightgreen?style=flat-square" alt="Node Compatibility" />
   <img src="https://img.shields.io/badge/TypeScript-Strict%205.x-3178C6?style=flat-square" alt="TypeScript Strict" />
   <img src="https://img.shields.io/badge/RFC%207807-Compliant-success?style=flat-square" alt="RFC 7807 Problem Details" />
   <img src="https://img.shields.io/badge/Dependencies-0%20Runtime-blue?style=flat-square" alt="Zero Runtime Dependencies" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg?style=flat-square" alt="License" /></a>
+</p>
+
+<p align="center">
+  <strong>The official Node.js & TypeScript SDK for <a href="https://xyo.financial">XYO Financial</a>.</strong><br>
+  Seamlessly enrich raw financial transactions into clean merchant profiles, intelligent business categorizations, high-res logos, and geolocated address metadata using AI-powered enrichment pipelines.
 </p>
 
 ---
