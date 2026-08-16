@@ -5,7 +5,7 @@
     <img alt="XYO Financial Logo" width="45%" src="https://github.com/xyo-financial/sdk-node/blob/main/docs/mascot.png?raw=true" />
   </a>
   <br/>
-  <b>Enterprise-Grade AI Financial Transaction Enrichment SDK for Node.js & TypeScript</b>
+  <b>Financial Transaction Enrichment SDK for Node.js & TypeScript</b>
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 
 ---
 
-## 🏛 Executive & Architectural Summary
+## 🏛 Summary & Architecture
 
 The **XYO Financial SDK** is the official, institutional-grade Node.js and TypeScript client for integrating the **XYO Financial AI Banking Transaction Enrichment Platform**. Built specifically for Tier-1 banks, payment service providers (PSPs), neo-banks, and enterprise fintechs, this SDK transforms raw, cryptic, and unstandardized transaction narratives into clean, deterministic merchant intelligence and hierarchical categorization.
 
