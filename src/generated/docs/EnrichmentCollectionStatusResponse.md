@@ -15,7 +15,7 @@ import type { EnrichmentCollectionStatusResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "status": null,
+  "status": READY,
 } satisfies EnrichmentCollectionStatusResponse
 
 console.log(example)

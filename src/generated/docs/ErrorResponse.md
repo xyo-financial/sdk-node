@@ -1,6 +1,7 @@
 
 # ErrorResponse
 
+Standard error response envelope containing a list of RFC 7807 problem details errors.
 
 ## Properties
 
