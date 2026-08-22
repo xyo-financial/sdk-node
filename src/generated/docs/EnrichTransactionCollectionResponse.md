@@ -16,8 +16,8 @@ import type { EnrichTransactionCollectionResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "id": null,
-  "link": null,
+  "id": 72c037df-d0d3-43ee-9470-323ff35a2e50,
+  "link": https://api.xyo.financial/v1/ai/finance/enrichment/download/72c037df-d0d3-43ee-9470-323ff35a2e50.tar.gz,
 } satisfies EnrichTransactionCollectionResponse
 
 console.log(example)
