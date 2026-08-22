@@ -65,7 +65,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.SDK_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
           commit-message: "chore: update generated Node SDK from spec ${{ github.event.client_payload.tag || inputs.spec_tag || 'latest' }}"
           title: "Automated SDK Update"
           body: "This PR automatically updates the generated `typescript-fetch` client based on OpenAPI spec ${{ github.event.client_payload.tag || inputs.spec_tag || 'latest' }}."
