@@ -1706,6 +1706,38 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       )
     })
 
+    it('throws error when basePath is invalid URL during downloadEnrichmentCollection', async () => {
+      const client = new XYOClient({ apiKey: 'token', basePath: 'not a valid url' })
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection('https://api.xyo.financial/download.tar.gz')
+        },
+        /downloadEnrichmentCollection: invalid base URL "not a valid url"/,
+      )
+    })
+
+    it('does not leak correlationId or traceparent headers to S3 downloads', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ error: 'not found' }, 404)
+
+      const client = new XYOClient({
+        apiKey: 'token',
+        correlationId: '12345678-1234-1234-1234-1234567890ab',
+        traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      })
+
+      try {
+        await client.downloadEnrichmentCollection('https://my-bucket.s3.amazonaws.com/results.tar.gz')
+      } catch {
+        // expected non-200 status error
+      }
+
+      assert.equal(capturedRequests.length, 1)
+      assert.equal(capturedRequests[0].headers['x-correlation-id'], undefined)
+      assert.equal(capturedRequests[0].headers['traceparent'], undefined)
+      assert.equal(capturedRequests[0].headers['authorization'], undefined)
+    })
+
     it('supports dynamic secret rotation via tokenSupplier', async () => {
       let currentKey = 'initial-token-1'
 
@@ -1972,6 +2004,28 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
         assert.equal(err.rateLimitLimit, 500)
         assert.equal(err.rateLimitRemaining, 10)
         assert.equal(err.rateLimitReset, 30)
+      }
+    })
+
+    it('parses ISO date string in Retry-After header and falls back to Date.parse()', async () => {
+      const futureIsoDateStr = new Date(Date.now() + 20000).toISOString()
+      mockFetchHandler = async () =>
+        createJsonResponse(
+          { errors: [{ title: 'Rate Limited', status: 429 }] },
+          429,
+          {
+            'retry-after': futureIsoDateStr,
+          },
+        )
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      try {
+        await client.enrichTransaction({ content: 'TEST', countryCode: 'US' })
+        assert.fail('Expected XyoRateLimitError')
+      } catch (err) {
+        assert.ok(err instanceof XyoRateLimitError)
+        assert.ok((err.retryAfter ?? 0) >= 15 && (err.retryAfter ?? 0) <= 25)
       }
     })
 

@@ -95,9 +95,11 @@ export class XyoRateLimitError extends ResponseError {
     const headers = response.headers
     const retryStr = headers.get('retry-after')
     if (retryStr) {
-      const parsedSec = parseInt(retryStr, 10)
-      if (!isNaN(parsedSec)) {
-        this.retryAfter = parsedSec
+      if (/^\s*\d+\s*$/.test(retryStr)) {
+        const parsedSec = parseInt(retryStr, 10)
+        if (!isNaN(parsedSec)) {
+          this.retryAfter = parsedSec
+        }
       } else {
         const dateMs = Date.parse(retryStr)
         if (!isNaN(dateMs)) {
@@ -313,6 +315,7 @@ export class XYOClient {
     return {
       /**
        * Enriches a single transaction narrative with structured metadata.
+       * @throws {XyoRateLimitError}
        */
       enrichTransaction: async (
         request: EnrichmentRequest,
@@ -335,6 +338,7 @@ export class XYOClient {
 
       /**
        * Queues a batch of transaction requests for asynchronous enrichment.
+       * @throws {XyoRateLimitError}
        */
       enrichTransactions: async (
         transactions: EnrichTransactionsRequestInner[],
@@ -363,6 +367,7 @@ export class XYOClient {
 
       /**
        * Retrieves the current processing status of a queued bulk job.
+       * @throws {XyoRateLimitError}
        */
       getEnrichmentStatus: async (
         id: string,
@@ -402,6 +407,8 @@ export class XYOClient {
 
   /**
    * Enriches a single transaction narrative with structured metadata.
+   *
+   * @throws {XyoRateLimitError}
    */
   public async enrichTransaction(
     request: EnrichmentRequest,
@@ -412,6 +419,8 @@ export class XYOClient {
 
   /**
    * Queues a batch of transaction requests for asynchronous enrichment.
+   *
+   * @throws {XyoRateLimitError}
    */
   public async enrichTransactions(
     transactions: EnrichTransactionsRequestInner[],
@@ -423,6 +432,8 @@ export class XYOClient {
 
   /**
    * Retrieves the current processing status of a queued bulk job.
+   *
+   * @throws {XyoRateLimitError}
    */
   public async getEnrichmentStatus(
     id: string,
@@ -449,6 +460,13 @@ export class XYOClient {
       throw new Error('downloadEnrichmentCollection: downloadUrl cannot be empty')
     }
 
+    let apiHost: string
+    try {
+      apiHost = new URL(this._basePath).host
+    } catch {
+      throw new Error(`downloadEnrichmentCollection: invalid base URL "${this._basePath}"`)
+    }
+
     let parsedUrl: URL
     try {
       parsedUrl = new URL(downloadUrl, this._basePath)
@@ -462,42 +480,32 @@ export class XYOClient {
       )
     }
 
+    const isApiHost = parsedUrl.host.toLowerCase() === apiHost.toLowerCase()
+    const isS3 = parsedUrl.host.toLowerCase().endsWith('.amazonaws.com')
+
+    if (!isApiHost && !isS3) {
+      throw new Error(
+        `downloadEnrichmentCollection: domain "${parsedUrl.host}" is not permitted for secure archive downloads.`,
+      )
+    }
+
     const fetchFn = this._fetchApi ?? globalThis.fetch
     const headers: Record<string, string> = {
       Accept: 'application/gzip, application/x-tar, application/octet-stream;q=0.9, */*;q=0.8',
     }
 
-    const tracing = this.getTracingHeaders(options)
-    if (tracing.xCorrelationID) {
-      headers['X-Correlation-ID'] = tracing.xCorrelationID
-    }
-    if (tracing.traceparent) {
-      headers['traceparent'] = tracing.traceparent
-    }
-
-    // Only attach Authorization header if target host matches configured API base URL host (prevents token leakage)
-    let apiHost = ''
-    try {
-      apiHost = new URL(this._basePath).host
-    } catch {
-      // ignore parse error
-    }
-
-    if (apiHost) {
-      const isApiHost = parsedUrl.host.toLowerCase() === apiHost.toLowerCase()
-      const isS3 = parsedUrl.host.toLowerCase().endsWith('.amazonaws.com')
-
-      if (!isApiHost && !isS3) {
-        throw new Error(
-          `downloadEnrichmentCollection: domain "${parsedUrl.host}" is not permitted for secure archive downloads.`,
-        )
+    if (isApiHost) {
+      const tracing = this.getTracingHeaders(options)
+      if (tracing.xCorrelationID) {
+        headers['X-Correlation-ID'] = tracing.xCorrelationID
+      }
+      if (tracing.traceparent) {
+        headers['traceparent'] = tracing.traceparent
       }
 
-      if (isApiHost) {
-        const currentToken = await this._tokenSupplier?.()
-        if (currentToken) {
-          headers['Authorization'] = `Bearer ${currentToken}`
-        }
+      const currentToken = await this._tokenSupplier?.()
+      if (currentToken) {
+        headers['Authorization'] = `Bearer ${currentToken}`
       }
     }
 
