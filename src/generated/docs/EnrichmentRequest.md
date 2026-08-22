@@ -16,8 +16,8 @@ import type { EnrichmentRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "content": null,
-  "countryCode": null,
+  "content": COSTA PICKUP LONDON,
+  "countryCode": GB,
 } satisfies EnrichmentRequest
 
 console.log(example)

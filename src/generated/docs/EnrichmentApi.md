@@ -12,7 +12,7 @@ All URIs are relative to *https://api.xyo.financial*
 
 ## enrichTransaction
 
-> EnrichmentResponse enrichTransaction(enrichmentRequest)
+> EnrichmentResponse enrichTransaction(enrichmentRequest, xCorrelationID, traceparent)
 
 Transaction Enrichment
 
@@ -36,8 +36,12 @@ async function example() {
   const api = new EnrichmentApi(config);
 
   const body = {
-    // EnrichmentRequest (optional)
-    enrichmentRequest: {"content":"COSTA PICKUP","countryCode":"GB"},
+    // EnrichmentRequest | Transaction enrichment request payload containing payment text and ISO-3166-1 alpha-2 country code.
+    enrichmentRequest: {"content":"COSTA PICKUP LONDON","countryCode":"GB"},
+    // string | Unique caller correlation identifier (UUIDv4) for distributed tracing across microservice boundaries. (optional)
+    xCorrelationID: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d,
+    // string | Standard W3C TraceContext header (version-trace_id-parent_id-trace_flags) for distributed APM tracing. (optional)
+    traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01,
   } satisfies EnrichTransactionRequest;
 
   try {
@@ -57,7 +61,9 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **enrichmentRequest** | [EnrichmentRequest](EnrichmentRequest.md) |  | [Optional] |
+| **enrichmentRequest** | [EnrichmentRequest](EnrichmentRequest.md) | Transaction enrichment request payload containing payment text and ISO-3166-1 alpha-2 country code. | |
+| **xCorrelationID** | `string` | Unique caller correlation identifier (UUIDv4) for distributed tracing across microservice boundaries. | [Optional] [Defaults to `undefined`] |
+| **traceparent** | `string` | Standard W3C TraceContext header (version-trace_id-parent_id-trace_flags) for distributed APM tracing. | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -76,16 +82,18 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Successful response |  -  |
+| **200** | Successful response returning enriched merchant and categorization details. |  * X-Correlation-ID -  <br>  |
+| **429** | Too Many Requests - Rate limit or quota exceeded. |  * Retry-After -  <br>  * RateLimit-Limit -  <br>  * RateLimit-Remaining -  <br>  * RateLimit-Reset -  <br>  * X-Correlation-ID -  <br>  |
 | **3XX** | Redirection |  -  |
-| **4XX** | Client Error |  -  |
+| **4XX** | Client Error |  * X-Correlation-ID -  <br>  |
+| **5XX** | Server Error |  * X-Correlation-ID -  <br>  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## enrichTransactions
 
-> EnrichTransactionCollectionResponse enrichTransactions(xApiUser, enrichTransactionsRequestInner)
+> EnrichTransactionCollectionResponse enrichTransactions(enrichTransactionsRequestInner, xApiUser, xCorrelationID, traceparent)
 
 Transaction Enrichments
 
@@ -109,10 +117,14 @@ async function example() {
   const api = new EnrichmentApi(config);
 
   const body = {
-    // any (optional)
+    // Array<EnrichTransactionsRequestInner> | Array of transaction enrichment requests (minimum 1, maximum 50,000 items) for asynchronous batch processing.
+    enrichTransactionsRequestInner: [{"content":"COSTA PICKUP LONDON","countryCode":"GB"},{"content":"STARBUCKS STORE #10423 SEATTLE WA","countryCode":"US"},{"content":"UBER *TRIP 12345 HELP.UBER.COM","countryCode":"GB"},{"content":"TfL Travel Charge tfl.gov.uk","countryCode":"GB"}],
+    // string | Optional identifier for the API user or tenant. (optional)
     xApiUser: syniol,
-    // Array<EnrichTransactionsRequestInner> (optional)
-    enrichTransactionsRequestInner: [{"content":"COSTA COLLECT","countryCode":"GB"}],
+    // string | Unique caller correlation identifier (UUIDv4) for distributed tracing across microservice boundaries. (optional)
+    xCorrelationID: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d,
+    // string | Standard W3C TraceContext header (version-trace_id-parent_id-trace_flags) for distributed APM tracing. (optional)
+    traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01,
   } satisfies EnrichTransactionsRequest;
 
   try {
@@ -132,8 +144,10 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **xApiUser** | `any` |  | [Optional] [Defaults to `undefined`] |
-| **enrichTransactionsRequestInner** | `Array<EnrichTransactionsRequestInner>` |  | [Optional] |
+| **enrichTransactionsRequestInner** | `Array<EnrichTransactionsRequestInner>` | Array of transaction enrichment requests (minimum 1, maximum 50,000 items) for asynchronous batch processing. | |
+| **xApiUser** | `string` | Optional identifier for the API user or tenant. | [Optional] [Defaults to `undefined`] |
+| **xCorrelationID** | `string` | Unique caller correlation identifier (UUIDv4) for distributed tracing across microservice boundaries. | [Optional] [Defaults to `undefined`] |
+| **traceparent** | `string` | Standard W3C TraceContext header (version-trace_id-parent_id-trace_flags) for distributed APM tracing. | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -152,16 +166,18 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Successful response |  -  |
+| **200** | Successful response returning bulk job ID and download archive link. |  * X-Correlation-ID -  <br>  |
+| **429** | Too Many Requests - Rate limit or quota exceeded. |  * Retry-After -  <br>  * RateLimit-Limit -  <br>  * RateLimit-Remaining -  <br>  * RateLimit-Reset -  <br>  * X-Correlation-ID -  <br>  |
 | **3XX** | Redirection |  -  |
-| **4XX** | Client Error |  -  |
+| **4XX** | Client Error |  * X-Correlation-ID -  <br>  |
+| **5XX** | Server Error |  * X-Correlation-ID -  <br>  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## getEnrichmentStatus
 
-> EnrichmentCollectionStatusResponse getEnrichmentStatus(id, xApiUser)
+> EnrichmentCollectionStatusResponse getEnrichmentStatus(id, xApiUser, xCorrelationID, traceparent)
 
 Transaction Enrichments Status
 
@@ -185,10 +201,14 @@ async function example() {
   const api = new EnrichmentApi(config);
 
   const body = {
-    // string
-    id: id_example,
-    // any (optional)
+    // string | The unique identifier of the asynchronous bulk enrichment job.
+    id: 72c037df-d0d3-43ee-9470-323ff35a2e50,
+    // string | Optional identifier for the API user or tenant. (optional)
     xApiUser: syniol,
+    // string | Unique caller correlation identifier (UUIDv4) for distributed tracing across microservice boundaries. (optional)
+    xCorrelationID: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d,
+    // string | Standard W3C TraceContext header (version-trace_id-parent_id-trace_flags) for distributed APM tracing. (optional)
+    traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01,
   } satisfies GetEnrichmentStatusRequest;
 
   try {
@@ -208,8 +228,10 @@ example().catch(console.error);
 
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **id** | `string` |  | [Defaults to `undefined`] |
-| **xApiUser** | `any` |  | [Optional] [Defaults to `undefined`] |
+| **id** | `string` | The unique identifier of the asynchronous bulk enrichment job. | [Defaults to `undefined`] |
+| **xApiUser** | `string` | Optional identifier for the API user or tenant. | [Optional] [Defaults to `undefined`] |
+| **xCorrelationID** | `string` | Unique caller correlation identifier (UUIDv4) for distributed tracing across microservice boundaries. | [Optional] [Defaults to `undefined`] |
+| **traceparent** | `string` | Standard W3C TraceContext header (version-trace_id-parent_id-trace_flags) for distributed APM tracing. | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -228,9 +250,11 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | Successful response |  -  |
+| **200** | Successful response returning the current processing status of the bulk enrichment job. |  * X-Correlation-ID -  <br>  |
+| **429** | Too Many Requests - Rate limit or quota exceeded. |  * Retry-After -  <br>  * RateLimit-Limit -  <br>  * RateLimit-Remaining -  <br>  * RateLimit-Reset -  <br>  * X-Correlation-ID -  <br>  |
 | **3XX** | Redirection |  -  |
-| **4XX** | Client Error |  -  |
+| **4XX** | Client Error |  * X-Correlation-ID -  <br>  |
+| **5XX** | Server Error |  * X-Correlation-ID -  <br>  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
