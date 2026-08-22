@@ -1,4 +1,3 @@
-.openapi-generator-ignore
 apis/EnrichmentApi.ts
 apis/index.ts
 docs/APIError.md

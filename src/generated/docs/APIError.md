@@ -1,6 +1,7 @@
 
 # APIError
 
+RFC 7807 compliant problem details object representing an API error.
 
 ## Properties
 
@@ -19,11 +20,11 @@ import type { APIError } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "type": null,
-  "title": null,
-  "status": null,
-  "detail": null,
-  "instance": null,
+  "type": https://api.xyo.financial/errors/unauthorized,
+  "title": Unauthorized,
+  "status": 401,
+  "detail": Invalid or expired Bearer authentication token provided.,
+  "instance": /v1/ai/finance/enrichment/transaction#req-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d,
 } satisfies APIError
 
 console.log(example)

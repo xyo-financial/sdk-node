@@ -16,8 +16,8 @@ import type { EnrichTransactionsRequestInner } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "content": null,
-  "countryCode": null,
+  "content": COSTA PICKUP LONDON,
+  "countryCode": GB,
 } satisfies EnrichTransactionsRequestInner
 
 console.log(example)
