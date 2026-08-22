@@ -80,14 +80,26 @@ export interface XYOClientOptions {
 }
 
 export class XyoRateLimitError extends ResponseError {
-  public readonly retryAfter?: number
+  // @ts-expect-error TS2416: openapi generator hardcodes literal type 'ResponseError' on ResponseError.name
+  override readonly name = 'XyoRateLimitError' as const
+  private readonly _retryAfterSec?: number
+  private readonly _retryAfterDateMs?: number
   public readonly rateLimitLimit?: number
   public readonly rateLimitRemaining?: number
   public readonly rateLimitReset?: number
 
+  get retryAfter(): number | undefined {
+    if (this._retryAfterSec !== undefined) {
+      return this._retryAfterSec
+    }
+    if (this._retryAfterDateMs !== undefined) {
+      return Math.max(0, Math.ceil((this._retryAfterDateMs - Date.now()) / 1000))
+    }
+    return undefined
+  }
+
   constructor(response: Response, msg?: string) {
     super(response, msg ?? 'Rate limit exceeded (HTTP 429)')
-    ;(this as { name: string }).name = 'XyoRateLimitError'
 
     const actualProto = new.target.prototype
     Object.setPrototypeOf(this, actualProto)
@@ -98,12 +110,12 @@ export class XyoRateLimitError extends ResponseError {
       if (/^\s*\d+\s*$/.test(retryStr)) {
         const parsedSec = parseInt(retryStr, 10)
         if (!isNaN(parsedSec)) {
-          this.retryAfter = parsedSec
+          this._retryAfterSec = parsedSec
         }
       } else {
         const dateMs = Date.parse(retryStr)
         if (!isNaN(dateMs)) {
-          this.retryAfter = Math.max(0, Math.ceil((dateMs - Date.now()) / 1000))
+          this._retryAfterDateMs = dateMs
         }
       }
     }
@@ -129,7 +141,7 @@ export class XyoRateLimitError extends ResponseError {
 }
 
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-const TRACEPARENT_REGEX = /^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$/
+const TRACEPARENT_REGEX = /^[0-9a-fA-F]{2}-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$/
 
 function validateCorrelationId(correlationId?: string): void {
   if (correlationId !== undefined) {
@@ -321,6 +333,12 @@ export class XYOClient {
         request: EnrichmentRequest,
         options?: RequestOptions,
       ): Promise<EnrichmentResponse> => {
+        if (!request.content || request.content.trim().length === 0) {
+          throw new Error('enrichTransaction: content cannot be empty')
+        }
+        if (request.content.length > 128) {
+          throw new Error('enrichTransaction: content cannot exceed 128 characters')
+        }
         if (request.countryCode && request.countryCode.trim().length !== 2) {
           throw new Error(
             'enrichTransaction: countryCode must be an ISO 3166-1 alpha-2 two-letter code',
@@ -481,7 +499,8 @@ export class XYOClient {
     }
 
     const isApiHost = parsedUrl.host.toLowerCase() === apiHost.toLowerCase()
-    const isS3 = parsedUrl.host.toLowerCase().endsWith('.amazonaws.com')
+    const S3_HOST_REGEX = /^([a-zA-Z0-9.-]+\.)?s3([.-][a-zA-Z0-9.-]+)?\.amazonaws\.com$/i
+    const isS3 = S3_HOST_REGEX.test(parsedUrl.host)
 
     if (!isApiHost && !isS3) {
       throw new Error(

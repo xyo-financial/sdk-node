@@ -420,6 +420,53 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       )
     })
 
+    it('rejects empty or whitespace-only content', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+
+      await assert.rejects(
+        async () => {
+          await client.enrichTransaction({
+            content: '',
+            countryCode: 'US',
+          })
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('content cannot be empty'))
+          return true
+        },
+      )
+
+      await assert.rejects(
+        async () => {
+          await client.enrichTransaction({
+            content: '   ',
+            countryCode: 'US',
+          })
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('content cannot be empty'))
+          return true
+        },
+      )
+    })
+
+    it('rejects content exceeding 128 characters', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+
+      await assert.rejects(
+        async () => {
+          await client.enrichTransaction({
+            content: 'A'.repeat(129),
+            countryCode: 'US',
+          })
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('content cannot exceed 128 characters'))
+          return true
+        },
+      )
+    })
+
     it('handles 400 Bad Request error with RFC 7807 problem details', async () => {
       const problemDetails: ErrorResponse = {
         errors: [
@@ -442,7 +489,7 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
 
       try {
         await client.enrichTransaction({
-          content: 'VERY LONG INVALID NARRATIVE'.repeat(10),
+          content: 'INVALID NARRATIVE',
           countryCode: 'GB',
         })
         assert.fail(
@@ -1109,6 +1156,16 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       assert.equal(APIErrorFromJSON(null), null)
       assert.equal(APIErrorToJSON(null), null)
       assert.equal(APIErrorToJSON(undefined), undefined)
+
+      const rawJsonNullStatus = {
+        type: 'https://example.com/prob/error',
+        title: 'Error without status',
+        status: null,
+        detail: 'Detail',
+        instance: '/inst',
+      }
+      const parsedNullStatus = APIErrorFromJSON(rawJsonNullStatus)
+      assert.equal(parsedNullStatus.status, null)
     })
 
     it('validates ErrorResponseFromJSON and ErrorResponseToJSON serialization', () => {
@@ -1686,6 +1743,13 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
           await client.downloadEnrichmentCollection('ftp://malicious.org/archive.tar.gz')
         },
         /downloadEnrichmentCollection: unsupported protocol "ftp:"/,
+      )
+
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection('https://ec2.compute.amazonaws.com/archive.tar.gz')
+        },
+        /downloadEnrichmentCollection: domain "ec2.compute.amazonaws.com" is not permitted/,
       )
     })
 
