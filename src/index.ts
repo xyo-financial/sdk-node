@@ -10,6 +10,7 @@ import {
   EnrichmentResponseFromJSON,
   EnrichTransactionCollectionResponse,
   EnrichmentCollectionStatusResponse,
+  ResponseError,
 } from './generated'
 
 export * from './generated'
@@ -17,6 +18,23 @@ export * from './generated'
 export const DEFAULT_MAX_TAR_ENTRIES = 50000
 export const DEFAULT_MAX_ENTRY_BYTES = 10 * 1024 * 1024 // 10 MiB
 export const DEFAULT_MAX_ARCHIVE_BYTES = 100 * 1024 * 1024 // 100 MiB
+
+export interface RequestOptions {
+  /**
+   * Distributed tracing correlation ID (X-Correlation-ID header, UUID format)
+   */
+  correlationId?: string
+  /**
+   * Distributed tracing traceparent header (traceparent header, W3C format)
+   */
+  traceparent?: string
+  /**
+   * Optional End-user API tenant identifier
+   */
+  xApiUser?: string
+}
+
+export type XYORequestOptions = RequestOptions
 
 export interface XYOClientOptions {
   /**
@@ -51,6 +69,105 @@ export interface XYOClientOptions {
    * Custom fetch implementation (optional)
    */
   fetchApi?: typeof fetch
+  /**
+   * Optional default distributed tracing correlation ID (X-Correlation-ID header, UUID format)
+   */
+  correlationId?: string
+  /**
+   * Optional default distributed tracing traceparent header (traceparent header, W3C format)
+   */
+  traceparent?: string
+}
+
+export class XyoRateLimitError extends ResponseError {
+  public readonly retryAfter?: number
+  public readonly rateLimitLimit?: number
+  public readonly rateLimitRemaining?: number
+  public readonly rateLimitReset?: number
+
+  constructor(response: Response, msg?: string) {
+    super(response, msg ?? 'Rate limit exceeded (HTTP 429)')
+    ;(this as { name: string }).name = 'XyoRateLimitError'
+
+    const actualProto = new.target.prototype
+    Object.setPrototypeOf(this, actualProto)
+
+    const headers = response.headers
+    const retryStr = headers.get('retry-after')
+    if (retryStr) {
+      const parsedSec = parseInt(retryStr, 10)
+      if (!isNaN(parsedSec)) {
+        this.retryAfter = parsedSec
+      } else {
+        const dateMs = Date.parse(retryStr)
+        if (!isNaN(dateMs)) {
+          this.retryAfter = Math.max(0, Math.ceil((dateMs - Date.now()) / 1000))
+        }
+      }
+    }
+
+    const limitStr = headers.get('ratelimit-limit') ?? headers.get('x-ratelimit-limit')
+    if (limitStr) {
+      const parsed = parseInt(limitStr, 10)
+      if (!isNaN(parsed)) this.rateLimitLimit = parsed
+    }
+
+    const remainingStr = headers.get('ratelimit-remaining') ?? headers.get('x-ratelimit-remaining')
+    if (remainingStr) {
+      const parsed = parseInt(remainingStr, 10)
+      if (!isNaN(parsed)) this.rateLimitRemaining = parsed
+    }
+
+    const resetStr = headers.get('ratelimit-reset') ?? headers.get('x-ratelimit-reset')
+    if (resetStr) {
+      const parsed = parseInt(resetStr, 10)
+      if (!isNaN(parsed)) this.rateLimitReset = parsed
+    }
+  }
+}
+
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+const TRACEPARENT_REGEX = /^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$/
+
+function validateCorrelationId(correlationId?: string): void {
+  if (correlationId !== undefined) {
+    if (!UUID_REGEX.test(correlationId)) {
+      throw new Error('correlationId must be a valid UUID')
+    }
+  }
+}
+
+function validateTraceparent(traceparent?: string): void {
+  if (traceparent !== undefined) {
+    if (!TRACEPARENT_REGEX.test(traceparent)) {
+      throw new Error('traceparent must be a valid W3C traceparent header')
+    }
+  }
+}
+
+function parseApiUserAndOptions(
+  xApiUserOrOptions?: string | RequestOptions,
+  options?: RequestOptions,
+): { xApiUser?: string; opts?: RequestOptions } {
+  if (typeof xApiUserOrOptions === 'string') {
+    return { xApiUser: xApiUserOrOptions, opts: options }
+  } else if (typeof xApiUserOrOptions === 'object') {
+    const { xApiUser, ...restOpts } = xApiUserOrOptions
+    const mergedOpts = { ...restOpts, ...options }
+    return { xApiUser: xApiUser ?? options?.xApiUser, opts: mergedOpts }
+  }
+  return { xApiUser: options?.xApiUser, opts: options }
+}
+
+async function handleApiError<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (err) {
+    if (err instanceof ResponseError && err.response.status === 429) {
+      throw new XyoRateLimitError(err.response, err.message)
+    }
+    throw err
+  }
 }
 
 /**
@@ -136,6 +253,8 @@ export class XYOClient {
   private readonly _tokenSupplier: (() => string | Promise<string>) | undefined
   private readonly _fetchApi: typeof fetch | undefined
   private readonly _maxArchiveBytes: number
+  private readonly _correlationId?: string
+  private readonly _traceparent?: string
 
   constructor(options: XYOClientOptions) {
     const rawBasePath = (
@@ -145,9 +264,14 @@ export class XYOClient {
       'https://api.xyo.financial'
     ).replace(/\/+$/, '')
 
+    validateCorrelationId(options.correlationId)
+    validateTraceparent(options.traceparent)
+
     this._basePath = rawBasePath
     this._maxArchiveBytes = options.maxArchiveBytes ?? DEFAULT_MAX_ARCHIVE_BYTES
     this._fetchApi = options.fetchApi
+    this._correlationId = options.correlationId
+    this._traceparent = options.traceparent
 
     const tokenSupplier = options.tokenSupplier ?? options.apiKeySupplier
     if (tokenSupplier) {
@@ -169,6 +293,19 @@ export class XYOClient {
     this._api = new EnrichmentApi(config)
   }
 
+  private getTracingHeaders(options?: RequestOptions): { xCorrelationID?: string; traceparent?: string } {
+    const correlationId = options?.correlationId ?? this._correlationId
+    const traceparent = options?.traceparent ?? this._traceparent
+
+    validateCorrelationId(correlationId)
+    validateTraceparent(traceparent)
+
+    return {
+      xCorrelationID: correlationId,
+      traceparent,
+    }
+  }
+
   /**
    * Transaction Enrichment Services
    */
@@ -179,15 +316,21 @@ export class XYOClient {
        */
       enrichTransaction: async (
         request: EnrichmentRequest,
+        options?: RequestOptions,
       ): Promise<EnrichmentResponse> => {
         if (request.countryCode && request.countryCode.trim().length !== 2) {
           throw new Error(
             'enrichTransaction: countryCode must be an ISO 3166-1 alpha-2 two-letter code',
           )
         }
-        return this._api.enrichTransaction({
-          enrichmentRequest: request,
-        })
+        const tracing = this.getTracingHeaders(options)
+        return handleApiError(() =>
+          this._api.enrichTransaction({
+            enrichmentRequest: request,
+            xCorrelationID: tracing.xCorrelationID,
+            traceparent: tracing.traceparent,
+          }),
+        )
       },
 
       /**
@@ -195,15 +338,27 @@ export class XYOClient {
        */
       enrichTransactions: async (
         transactions: EnrichTransactionsRequestInner[],
-        xApiUser?: string,
+        xApiUserOrOptions?: string | RequestOptions,
+        options?: RequestOptions,
       ): Promise<EnrichTransactionCollectionResponse> => {
+        if (!Array.isArray(transactions) || transactions.length < 1 || transactions.length > 50000) {
+          throw new Error(
+            'enrichTransactions: transactions batch must contain between 1 and 50,000 items',
+          )
+        }
+        const { xApiUser, opts } = parseApiUserAndOptions(xApiUserOrOptions, options)
         if (xApiUser && (xApiUser.includes('\r') || xApiUser.includes('\n'))) {
           throw new Error('enrichTransactions: xApiUser must not contain CR or LF characters')
         }
-        return this._api.enrichTransactions({
-          xApiUser,
-          enrichTransactionsRequestInner: transactions,
-        })
+        const tracing = this.getTracingHeaders(opts)
+        return handleApiError(() =>
+          this._api.enrichTransactions({
+            xApiUser,
+            enrichTransactionsRequestInner: transactions,
+            xCorrelationID: tracing.xCorrelationID,
+            traceparent: tracing.traceparent,
+          }),
+        )
       },
 
       /**
@@ -211,15 +366,25 @@ export class XYOClient {
        */
       getEnrichmentStatus: async (
         id: string,
-        xApiUser?: string,
+        xApiUserOrOptions?: string | RequestOptions,
+        options?: RequestOptions,
       ): Promise<EnrichmentCollectionStatusResponse> => {
         if (typeof id !== 'string' || !id.trim()) {
           throw new Error('getEnrichmentStatus: id cannot be empty')
         }
+        const { xApiUser, opts } = parseApiUserAndOptions(xApiUserOrOptions, options)
         if (xApiUser && (xApiUser.includes('\r') || xApiUser.includes('\n'))) {
           throw new Error('getEnrichmentStatus: xApiUser must not contain CR or LF characters')
         }
-        return this._api.getEnrichmentStatus({ id, xApiUser })
+        const tracing = this.getTracingHeaders(opts)
+        return handleApiError(() =>
+          this._api.getEnrichmentStatus({
+            id,
+            xApiUser,
+            xCorrelationID: tracing.xCorrelationID,
+            traceparent: tracing.traceparent,
+          }),
+        )
       },
 
       /**
@@ -228,8 +393,9 @@ export class XYOClient {
        */
       downloadEnrichmentCollection: async (
         downloadUrl: string,
+        options?: RequestOptions,
       ): Promise<EnrichmentResponse[]> => {
-        return this.downloadEnrichmentCollection(downloadUrl)
+        return this.downloadEnrichmentCollection(downloadUrl, options)
       },
     }
   }
@@ -239,8 +405,9 @@ export class XYOClient {
    */
   public async enrichTransaction(
     request: EnrichmentRequest,
+    options?: RequestOptions,
   ): Promise<EnrichmentResponse> {
-    return this.enrichment.enrichTransaction(request)
+    return this.enrichment.enrichTransaction(request, options)
   }
 
   /**
@@ -248,9 +415,10 @@ export class XYOClient {
    */
   public async enrichTransactions(
     transactions: EnrichTransactionsRequestInner[],
-    xApiUser?: string,
+    xApiUserOrOptions?: string | RequestOptions,
+    options?: RequestOptions,
   ): Promise<EnrichTransactionCollectionResponse> {
-    return this.enrichment.enrichTransactions(transactions, xApiUser)
+    return this.enrichment.enrichTransactions(transactions, xApiUserOrOptions, options)
   }
 
   /**
@@ -258,9 +426,10 @@ export class XYOClient {
    */
   public async getEnrichmentStatus(
     id: string,
-    xApiUser?: string,
+    xApiUserOrOptions?: string | RequestOptions,
+    options?: RequestOptions,
   ): Promise<EnrichmentCollectionStatusResponse> {
-    return this.enrichment.getEnrichmentStatus(id, xApiUser)
+    return this.enrichment.getEnrichmentStatus(id, xApiUserOrOptions, options)
   }
 
   /**
@@ -268,11 +437,13 @@ export class XYOClient {
    * produced by the bulk enrichment pipeline.
    *
    * @param downloadUrl - The `link` field returned by `enrichTransactions`.
+   * @param options - Optional per-request settings (tracing headers, etc.)
    * @returns An array of `EnrichmentResponse` objects parsed from the archive.
-   * @throws `Error` on non-200 HTTP status, WAF interception, or decompression failure.
+   * @throws `Error` or `XyoRateLimitError` on non-200 HTTP status, WAF interception, or decompression failure.
    */
   public async downloadEnrichmentCollection(
     downloadUrl: string,
+    options?: RequestOptions,
   ): Promise<EnrichmentResponse[]> {
     if (!downloadUrl.trim()) {
       throw new Error('downloadEnrichmentCollection: downloadUrl cannot be empty')
@@ -296,6 +467,14 @@ export class XYOClient {
       Accept: 'application/gzip, application/x-tar, application/octet-stream;q=0.9, */*;q=0.8',
     }
 
+    const tracing = this.getTracingHeaders(options)
+    if (tracing.xCorrelationID) {
+      headers['X-Correlation-ID'] = tracing.xCorrelationID
+    }
+    if (tracing.traceparent) {
+      headers['traceparent'] = tracing.traceparent
+    }
+
     // Only attach Authorization header if target host matches configured API base URL host (prevents token leakage)
     let apiHost = ''
     try {
@@ -307,9 +486,11 @@ export class XYOClient {
     if (apiHost) {
       const isApiHost = parsedUrl.host.toLowerCase() === apiHost.toLowerCase()
       const isS3 = parsedUrl.host.toLowerCase().endsWith('.amazonaws.com')
-      
+
       if (!isApiHost && !isS3) {
-        throw new Error(`downloadEnrichmentCollection: domain "${parsedUrl.host}" is not permitted for secure archive downloads.`)
+        throw new Error(
+          `downloadEnrichmentCollection: domain "${parsedUrl.host}" is not permitted for secure archive downloads.`,
+        )
       }
 
       if (isApiHost) {
@@ -325,8 +506,13 @@ export class XYOClient {
       headers,
     })
 
+    if (response.status === 429) {
+      throw new XyoRateLimitError(response)
+    }
+
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(
+      throw new ResponseError(
+        response,
         `downloadEnrichmentCollection: unexpected HTTP status ${String(response.status)}`,
       )
     }
@@ -335,7 +521,12 @@ export class XYOClient {
     const contentType = response.headers.get('content-type') ?? ''
     if (contentType) {
       const ct = contentType.toLowerCase()
-      if (!ct.includes('gzip') && !ct.includes('tar') && !ct.includes('octet-stream') && !ct.includes('binary')) {
+      if (
+        !ct.includes('gzip') &&
+        !ct.includes('tar') &&
+        !ct.includes('octet-stream') &&
+        !ct.includes('binary')
+      ) {
         throw new Error(
           `downloadEnrichmentCollection: unexpected Content-Type "${contentType}" received when expecting binary archive.`,
         )
@@ -349,7 +540,7 @@ export class XYOClient {
     // Collect all compressed bytes with max bytes guard
     let totalCompressedBytes = 0
     const compressedChunks: Buffer[] = []
-    
+
     // Support both Node.js Streams and Web Streams via Async Iteration
     for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array | string>) {
       const bufChunk = Buffer.from(chunk)
@@ -410,4 +601,3 @@ export class XYOClient {
 
 export { XYOClient as Client }
 export type { XYOClientOptions as ClientOptions }
-

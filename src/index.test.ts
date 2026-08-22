@@ -50,6 +50,9 @@ import {
   exists,
   anyToJSON,
   canConsumeForm,
+  XyoRateLimitError,
+  type RequestOptions,
+  type XYORequestOptions,
   type APIError,
   type ErrorResponse,
 } from './index'
@@ -821,7 +824,7 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       const client = new XYOClient({ apiKey: 'token' })
 
       try {
-        await client.enrichTransactions([])
+        await client.enrichTransactions([{ content: 'INVALID', countryCode: 'US' }])
         assert.fail(
           'Expected bulk call to throw ResponseError',
         )
@@ -1798,6 +1801,300 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       const results = await client.downloadEnrichmentCollection('https://api.xyo.financial/download/100chars.tar.gz')
       assert.equal(results.length, 1)
       assert.equal(results[0].merchant, '100 Char Merchant')
+    })
+  })
+
+  describe('8. Distributed Tracing Headers (correlationId & traceparent)', () => {
+    const validUuid = '123e4567-e89b-12d3-a456-426614174000'
+    const validTraceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+
+    it('sends default correlationId and traceparent from client options', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ merchant: 'Tracing Test' }, 200)
+
+      const client = new XYOClient({
+        apiKey: 'test-key',
+        correlationId: validUuid,
+        traceparent: validTraceparent,
+      })
+
+      await client.enrichTransaction({ content: 'TEST', countryCode: 'US' })
+
+      assert.equal(capturedRequests.length, 1)
+      assert.equal(capturedRequests[0].headers['x-correlation-id'], validUuid)
+      assert.equal(capturedRequests[0].headers['traceparent'], validTraceparent)
+    })
+
+    it('overrides correlationId and traceparent per-request in call options', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ merchant: 'Tracing Override' }, 200)
+
+      const client = new XYOClient({
+        apiKey: 'test-key',
+        correlationId: validUuid,
+        traceparent: validTraceparent,
+      })
+
+      const customUuid = 'a0b1c2d3-e4f5-6789-abcd-ef0123456789'
+      const customTraceparent = '00-11111111111111111111111111111111-2222222222222222-01'
+
+      await client.enrichTransaction(
+        { content: 'TEST', countryCode: 'US' },
+        { correlationId: customUuid, traceparent: customTraceparent },
+      )
+
+      assert.equal(capturedRequests.length, 1)
+      assert.equal(capturedRequests[0].headers['x-correlation-id'], customUuid)
+      assert.equal(capturedRequests[0].headers['traceparent'], customTraceparent)
+    })
+
+    it('sends tracing headers in enrichTransactions, getEnrichmentStatus, and downloadEnrichmentCollection', async () => {
+      const client = new XYOClient({ apiKey: 'key' })
+
+      mockFetchHandler = async () =>
+        createJsonResponse({ id: 'job-1', link: 'https://api.xyo.financial/download.tar.gz' }, 200)
+
+      await client.enrichTransactions(
+        [{ content: 'TX1', countryCode: 'US' }],
+        { correlationId: validUuid, traceparent: validTraceparent },
+      )
+      assert.equal(capturedRequests[0].headers['x-correlation-id'], validUuid)
+      assert.equal(capturedRequests[0].headers['traceparent'], validTraceparent)
+
+      capturedRequests = []
+      mockFetchHandler = async () =>
+        createJsonResponse({ id: 'job-1', status: 'READY' }, 200)
+
+      await client.getEnrichmentStatus('job-1', {
+        correlationId: validUuid,
+        traceparent: validTraceparent,
+      })
+      assert.equal(capturedRequests[0].headers['x-correlation-id'], validUuid)
+      assert.equal(capturedRequests[0].headers['traceparent'], validTraceparent)
+    })
+
+    it('rejects invalid correlationId that is not a UUID', async () => {
+      const client = new XYOClient({ apiKey: 'key' })
+      await assert.rejects(
+        async () => {
+          await client.enrichTransaction(
+            { content: 'TX', countryCode: 'US' },
+            { correlationId: 'not-a-uuid' },
+          )
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('correlationId must be a valid UUID'))
+          return true
+        },
+      )
+    })
+
+    it('rejects invalid traceparent header format', async () => {
+      const client = new XYOClient({ apiKey: 'key' })
+      await assert.rejects(
+        async () => {
+          await client.enrichTransaction(
+            { content: 'TX', countryCode: 'US' },
+            { traceparent: 'invalid-traceparent' },
+          )
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('traceparent must be a valid W3C traceparent'))
+          return true
+        },
+      )
+    })
+
+    it('validates correlationId and traceparent passed in client constructor options', () => {
+      assert.throws(
+        () => new XYOClient({ apiKey: 'key', correlationId: 'bad' }),
+        /correlationId must be a valid UUID/,
+      )
+      assert.throws(
+        () => new XYOClient({ apiKey: 'key', traceparent: 'bad' }),
+        /traceparent must be a valid W3C traceparent/,
+      )
+    })
+  })
+
+  describe('9. HTTP 429 Rate Limit Error Handling (XyoRateLimitError)', () => {
+    it('parses Retry-After and RateLimit headers into XyoRateLimitError properties', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse(
+          { errors: [{ title: 'Too Many Requests', status: 429 }] },
+          429,
+          {
+            'Retry-After': '10',
+            'RateLimit-Limit': '100',
+            'RateLimit-Remaining': '0',
+            'RateLimit-Reset': '1600000000',
+          },
+        )
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      try {
+        await client.enrichTransaction({ content: 'TEST', countryCode: 'US' })
+        assert.fail('Expected call to throw XyoRateLimitError')
+      } catch (err) {
+        assert.ok(err instanceof XyoRateLimitError)
+        assert.ok(err instanceof ResponseError)
+        assert.equal(err.name, 'XyoRateLimitError')
+        assert.equal(err.retryAfter, 10)
+        assert.equal(err.rateLimitLimit, 100)
+        assert.equal(err.rateLimitRemaining, 0)
+        assert.equal(err.rateLimitReset, 1600000000)
+      }
+    })
+
+    it('parses X-RateLimit-* header fallbacks and HTTP Date Retry-After', async () => {
+      const futureDateStr = new Date(Date.now() + 15000).toUTCString()
+      mockFetchHandler = async () =>
+        createJsonResponse(
+          { errors: [{ title: 'Rate Limited', status: 429 }] },
+          429,
+          {
+            'retry-after': futureDateStr,
+            'x-ratelimit-limit': '500',
+            'x-ratelimit-remaining': '10',
+            'x-ratelimit-reset': '30',
+          },
+        )
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      try {
+        await client.enrichTransaction({ content: 'TEST', countryCode: 'US' })
+        assert.fail('Expected XyoRateLimitError')
+      } catch (err) {
+        assert.ok(err instanceof XyoRateLimitError)
+        assert.ok((err.retryAfter ?? 0) >= 10 && (err.retryAfter ?? 0) <= 20)
+        assert.equal(err.rateLimitLimit, 500)
+        assert.equal(err.rateLimitRemaining, 10)
+        assert.equal(err.rateLimitReset, 30)
+      }
+    })
+
+    it('calls downloadEnrichmentCollection via client.enrichment getter', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ message: 'Rate limited' }, 429, { 'Retry-After': '5' })
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      try {
+        await client.enrichment.downloadEnrichmentCollection('https://api.xyo.financial/download/test.tar.gz')
+        assert.fail('Expected XyoRateLimitError')
+      } catch (err) {
+        assert.ok(err instanceof XyoRateLimitError)
+      }
+    })
+
+    it('re-throws non-429 ResponseError in handleApiError', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ errors: [{ title: 'Server Error', status: 500 }] }, 500)
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      try {
+        await client.enrichment.enrichTransaction({ content: 'TEST', countryCode: 'US' })
+        assert.fail('Expected ResponseError')
+      } catch (err) {
+        assert.ok(err instanceof ResponseError)
+        assert.equal((err as ResponseError).response.status, 500)
+        assert.ok(!(err instanceof XyoRateLimitError))
+      }
+    })
+  })
+
+  describe('10. Batch Array Validation (enrichTransactions batch limits)', () => {
+    it('rejects empty batch array with 0 items', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+      await assert.rejects(
+        async () => {
+          await client.enrichTransactions([])
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('transactions batch must contain between 1 and 50,000 items'))
+          return true
+        },
+      )
+    })
+
+    it('rejects batch array exceeding 50,000 items', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+      const oversizedBatch = new Array(50001).fill({ content: 'TX', countryCode: 'US' })
+      await assert.rejects(
+        async () => {
+          await client.enrichTransactions(oversizedBatch)
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('transactions batch must contain between 1 and 50,000 items'))
+          return true
+        },
+      )
+    })
+
+    it('rejects non-array argument for enrichTransactions', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+      await assert.rejects(
+        async () => {
+          await (client.enrichTransactions as unknown as (arg: unknown) => Promise<unknown>)(null)
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('transactions batch must contain between 1 and 50,000 items'))
+          return true
+        },
+      )
+    })
+
+    it('accepts valid batch array size of 1 item and 50,000 items', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ id: 'batch-ok', link: 'https://api.xyo.financial/download/ok.tar.gz' }, 200)
+
+      const client = new XYOClient({ apiKey: 'token' })
+      const res = await client.enrichTransactions([{ content: 'TX', countryCode: 'US' }])
+      assert.equal(res.id, 'batch-ok')
+    })
+
+    it('handles signature permutations for (batch, xApiUser, options) and (batch, options)', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ id: 'batch-sig', link: 'https://api.xyo.financial/download/sig.tar.gz' }, 200)
+
+      const client = new XYOClient({ apiKey: 'token' })
+      const validUuid = '123e4567-e89b-12d3-a456-426614174000'
+
+      // (batch, xApiUser, options)
+      await client.enrichTransactions(
+        [{ content: 'TX1', countryCode: 'US' }],
+        'user-1',
+        { correlationId: validUuid },
+      )
+      assert.equal(capturedRequests[0].headers['x-api-user'], 'user-1')
+      assert.equal(capturedRequests[0].headers['x-correlation-id'], validUuid)
+
+      capturedRequests = []
+
+      // (batch, options with xApiUser inside object)
+      await client.enrichTransactions(
+        [{ content: 'TX2', countryCode: 'US' }],
+        { xApiUser: 'user-2', correlationId: validUuid },
+      )
+      assert.equal(capturedRequests[0].headers['x-api-user'], 'user-2')
+      assert.equal(capturedRequests[0].headers['x-correlation-id'], validUuid)
+    })
+  })
+
+  describe('11. Additional Client Options & Fallbacks', () => {
+    it('supports apiKeySupplier as alias for tokenSupplier', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse({ merchant: 'Supplier Test' }, 200)
+
+      const client = new XYOClient({
+        apiKeySupplier: () => Promise.resolve('supplier-key-123'),
+      })
+
+      await client.enrichTransaction({ content: 'TX', countryCode: 'US' })
+      assert.equal(capturedRequests[0].headers['authorization'], 'Bearer supplier-key-123')
     })
   })
 })
