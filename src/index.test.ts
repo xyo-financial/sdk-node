@@ -467,6 +467,32 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
       )
     })
 
+    it('rejects null or non-object request payloads', async () => {
+      const client = new XYOClient({ apiKey: 'token' })
+
+      await assert.rejects(
+        async () => {
+          // @ts-expect-error Testing runtime null guard
+          await client.enrichTransaction(null)
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('request must be a valid object'))
+          return true
+        },
+      )
+
+      await assert.rejects(
+        async () => {
+          // @ts-expect-error Testing runtime non-object guard
+          await client.enrichTransaction('not-an-object')
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('request must be a valid object'))
+          return true
+        },
+      )
+    })
+
     it('handles 400 Bad Request error with RFC 7807 problem details', async () => {
       const problemDetails: ErrorResponse = {
         errors: [
@@ -850,6 +876,34 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
           return true
         },
       )
+
+      await assert.rejects(
+        async () => {
+          await client.enrichTransactions(
+            [{ content: 'TX', countryCode: 'GB' }],
+            'user\x00nullbyte',
+          )
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes('CR or LF characters'))
+          return true
+        },
+      )
+    })
+
+    it('safely handles null options in parseApiUserAndOptions', async () => {
+      mockFetchHandler = async () =>
+        createJsonResponse(mockBulkResponse, 200)
+
+      const client = new XYOClient({ apiKey: 'token' })
+
+      // Pass null as xApiUserOrOptions to verify parseApiUserAndOptions does not throw TypeError on destructuring
+      const response = await client.enrichTransactions(
+        [{ content: 'TX', countryCode: 'GB' }],
+        // @ts-expect-error Testing runtime null guard
+        null,
+      )
+      assert.equal(response.id, '72c037df-d0d3-43ee-9470-323ff35a2e50')
     })
 
     it('handles bulk submission 400 Bad Request error', async () => {
@@ -1750,6 +1804,13 @@ describe('XYO Financial SDK - Node.js Test Suite', () => {
           await client.downloadEnrichmentCollection('https://ec2.compute.amazonaws.com/archive.tar.gz')
         },
         /downloadEnrichmentCollection: domain "ec2.compute.amazonaws.com" is not permitted/,
+      )
+
+      await assert.rejects(
+        async () => {
+          await client.downloadEnrichmentCollection('https://s3-evil.amazonaws.com/archive.tar.gz')
+        },
+        /downloadEnrichmentCollection: domain "s3-evil.amazonaws.com" is not permitted/,
       )
     })
 

@@ -142,6 +142,8 @@ export class XyoRateLimitError extends ResponseError {
 
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const TRACEPARENT_REGEX = /^[0-9a-fA-F]{2}-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$/
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_REGEX = /[\x00-\x1F\x7F]/
 
 function validateCorrelationId(correlationId?: string): void {
   if (correlationId !== undefined) {
@@ -165,7 +167,8 @@ function parseApiUserAndOptions(
 ): { xApiUser?: string; opts?: RequestOptions } {
   if (typeof xApiUserOrOptions === 'string') {
     return { xApiUser: xApiUserOrOptions, opts: options }
-  } else if (typeof xApiUserOrOptions === 'object') {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  } else if (xApiUserOrOptions !== null && typeof xApiUserOrOptions === 'object') {
     const { xApiUser, ...restOpts } = xApiUserOrOptions
     const mergedOpts = { ...restOpts, ...options }
     return { xApiUser: xApiUser ?? options?.xApiUser, opts: mergedOpts }
@@ -333,6 +336,10 @@ export class XYOClient {
         request: EnrichmentRequest,
         options?: RequestOptions,
       ): Promise<EnrichmentResponse> => {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (!request || typeof request !== 'object') {
+          throw new Error('enrichTransaction: request must be a valid object')
+        }
         if (!request.content || request.content.trim().length === 0) {
           throw new Error('enrichTransaction: content cannot be empty')
         }
@@ -369,7 +376,7 @@ export class XYOClient {
           )
         }
         const { xApiUser, opts } = parseApiUserAndOptions(xApiUserOrOptions, options)
-        if (xApiUser && (xApiUser.includes('\r') || xApiUser.includes('\n'))) {
+        if (xApiUser && CONTROL_CHAR_REGEX.test(xApiUser)) {
           throw new Error('enrichTransactions: xApiUser must not contain CR or LF characters')
         }
         const tracing = this.getTracingHeaders(opts)
@@ -396,7 +403,7 @@ export class XYOClient {
           throw new Error('getEnrichmentStatus: id cannot be empty')
         }
         const { xApiUser, opts } = parseApiUserAndOptions(xApiUserOrOptions, options)
-        if (xApiUser && (xApiUser.includes('\r') || xApiUser.includes('\n'))) {
+        if (xApiUser && CONTROL_CHAR_REGEX.test(xApiUser)) {
           throw new Error('getEnrichmentStatus: xApiUser must not contain CR or LF characters')
         }
         const tracing = this.getTracingHeaders(opts)
@@ -499,7 +506,7 @@ export class XYOClient {
     }
 
     const isApiHost = parsedUrl.host.toLowerCase() === apiHost.toLowerCase()
-    const S3_HOST_REGEX = /^([a-zA-Z0-9.-]+\.)?s3([.-][a-zA-Z0-9.-]+)?\.amazonaws\.com$/i
+    const S3_HOST_REGEX = /^([a-zA-Z0-9.-]+\.)?s3(\.[a-zA-Z0-9.-]+)?\.amazonaws\.com$/i
     const isS3 = S3_HOST_REGEX.test(parsedUrl.host)
 
     if (!isApiHost && !isS3) {
