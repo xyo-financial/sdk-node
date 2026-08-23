@@ -2,12 +2,12 @@
 
 ## 📋 Supported Versions
 
-Only the `2.0.0` release of the XYO Node.js SDK receives active security updates and patches.
+Only the `2.1.0` release of the XYO Node.js SDK receives active security updates and patches.
 
 | Version | Supported |
 | ------- | --------- |
-| 2.0.0   | :white_check_mark: |
-| < 2.0.0 | :x: |
+| 2.1.x   | :white_check_mark: |
+| < 2.1.0 | :x: |
 
 ## ⚙️ Runtime Lifecycle & LTS Support Policy
 
