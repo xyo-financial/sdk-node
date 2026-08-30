@@ -133,9 +133,21 @@ rm -f src/generated/git_push.sh src/generated/.travis.yml src/generated/README.m
 rm -rf src/generated/test
 ```
 
-### Immutable Rule for Generated Code
+### Generated Code Policy
+
 > [!IMPORTANT]
-> Files in `src/generated/` are strictly **read-only and immutable**. Never manually edit, reformat, or modify generated files. Linters (ESLint) and formatters (Prettier) are explicitly configured via `eslint.config.mts` and `.prettierignore` to skip `src/generated/`.
+> `src/generated/` is produced by OpenAPI Generator and is committed **exactly as the generator emits it**.
+
+- **Never edit it by hand.** Any manual change is silently destroyed by the next specification dispatch. Real fixes have already been lost this way elsewhere in the fleet, including a privacy fix in `sdk-go` that suppressed request bodies in debug logs.
+- **Never reformat it.** It is excluded from linting and formatting via `ignores` in `eslint.config.mts` and via `.prettierignore`. Generated output that has been reformatted no longer matches what the generator produces, so every regeneration then fights CI and the diff fills with style churn instead of specification changes.
+- **It is out of scope for code review, security review, audit and any other sanitisation pass.** Do not raise findings against generated output. Review the specification in [`xyo-financial/specs`](https://github.com/xyo-financial/specs) or the hand-written wrapper layer instead, which is what consumers actually call.
+- **It carries no hand-written tests.** Generated tests are disabled at generation time. Test the wrapper layer.
+
+If generated output is wrong, fix it at source, never in the output:
+
+1. Change the specification upstream in `xyo-financial/specs`, if the contract itself is wrong.
+2. Change the generator invocation in `.github/workflows/generate.yml`, if it is a generation setting.
+3. Add the file to `src/generated/.openapi-generator-ignore`, if the generator's version of it is genuinely not the source of truth.
 
 ---
 
