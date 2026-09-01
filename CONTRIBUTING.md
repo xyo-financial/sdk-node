@@ -1,17 +1,38 @@
-# Contributing to XYO Financial Node.js SDK
+# 🤝 Contributing to XYO Financial Node.js SDK
 
 Thank you for contributing to the **XYO Financial Node.js SDK** (`xyo-sdk`). This document provides institutional guidelines for engineers contributing to the design, implementation, testing, and maintenance of the SDK.
 
 ---
 
+## 📑 Table of Contents
+- [📋 1. Contribution Policy & Issue Reporting](#1-contribution-policy-issue-reporting)
+  - [🔀 Contribution Policy](#contribution-policy)
+  - [🔹 Reporting Issues & Requesting Features](#reporting-issues-requesting-features)
+- [🏗 2. Two-Layer Architecture](#2-two-layer-architecture)
+  - [🔹 Layer Breakdown](#layer-breakdown)
+- [🔀 3. Contribution Workflow & Decision Matrix](#3-contribution-workflow-decision-matrix)
+- [⚙️ 4. Code Generation](#4-code-generation)
+  - [⚙️ Automated Upstream Synchronization](#automated-upstream-synchronization)
+  - [⚙️ Manual / Local Code Generation](#manual-local-code-generation)
+  - [📋 Generated Code Policy](#generated-code-policy)
+- [🛡 5. Quality Gates & Verification Standards](#5-quality-gates-verification-standards)
+  - [🔹 1. Code Formatting & Linting](#1-code-formatting-linting)
+  - [🔹 2. Compilation & Type Checking](#2-compilation-type-checking)
+  - [🧪 3. Unit Testing & Coverage](#3-unit-testing-coverage)
+  - [🛡 4. Complete Pre-Commit Validation](#4-complete-pre-commit-validation)
+  - [🔹 5. Containerized Pipeline Verification](#5-containerized-pipeline-verification)
+- [📐 6. Coding Standards & Conventions](#6-coding-standards-conventions)
+- [🔒 7. Security Vulnerability Reporting](#7-security-vulnerability-reporting)
+- [📄 8. License](#8-license)
+
 ## 📋 1. Contribution Policy & Issue Reporting
 
-### Contribution Policy
+### 🔀 Contribution Policy
 Development, pull request reviews, and package publishing are maintained by **Syniol Limited** engineers.
 
 External pull requests submitted directly to this repository without prior coordination may be rejected. However, feedback, bug reports, and enhancement proposals from the developer community are welcome.
 
-### Reporting Issues & Requesting Features
+### 🔹 Reporting Issues & Requesting Features
 If you discover a bug, have questions, or wish to propose an enhancement:
 1. Search existing [GitHub Issues](https://github.com/xyo-financial/sdk-node/issues) to verify if the topic is already tracked.
 2. Open a new issue with:
@@ -55,7 +76,7 @@ The XYO Financial Node.js SDK is engineered with a strict **Two-Layer Architectu
                 XYO RESTful API (https://api.xyo.financial)
 ```
 
-### Layer Breakdown
+### 🔹 Layer Breakdown
 
 1. **Generated Layer (`src/generated/`) — READ-ONLY & IMMUTABLE**:
    - **Origin**: Automatically synthesized from the canonical OpenAPI 3.1 specification maintained in [`xyo-financial/specs`](https://github.com/xyo-financial/specs).
@@ -88,7 +109,7 @@ To maintain consistency across all official XYO Financial SDKs (Node.js, Python,
 
 ## ⚙️ 4. Code Generation
 
-### Automated Upstream Synchronization
+### ⚙️ Automated Upstream Synchronization
 When a new release tag or specification update is pushed to [`xyo-financial/specs`](https://github.com/xyo-financial/specs), a GitHub Actions workflow automatically triggers a `repository_dispatch` event (`spec_tagged`, `spec_updated`) to this repository. The [`.github/workflows/generate.yml`](.github/workflows/generate.yml) workflow:
 1. Checks out `xyo-financial/specs` at the specified tag, branch, or commit (`ref: ${{ github.event.client_payload.tag || inputs.spec_tag || 'main' }}`).
 2. Executes `openapi-generator-cli` to regenerate `src/generated/` using the `typescript-fetch` generator target.
@@ -96,7 +117,7 @@ When a new release tag or specification update is pushed to [`xyo-financial/spec
 4. Compiles the TypeScript bundle (`npm run build`) and executes the unit test suite (`npm test`).
 5. Opens an automated pull request for review.
 
-### Manual / Local Code Generation
+### ⚙️ Manual / Local Code Generation
 If you need to regenerate the low-level `src/generated/` layer locally:
 
 #### Prerequisites
@@ -133,7 +154,7 @@ rm -f src/generated/git_push.sh src/generated/.travis.yml src/generated/README.m
 rm -rf src/generated/test
 ```
 
-### Generated Code Policy
+### 📋 Generated Code Policy
 
 > [!IMPORTANT]
 > `src/generated/` is produced by OpenAPI Generator and is committed **exactly as the generator emits it**.
@@ -155,31 +176,31 @@ If generated output is wrong, fix it at source, never in the output:
 
 All pull requests and contributions must pass the complete quality gate suite prior to review and merging:
 
-### 1. Code Formatting & Linting
+### 🔹 1. Code Formatting & Linting
 Enforce code formatting (Prettier) and ESLint rules on hand-crafted code:
 ```bash
 npm run lint
 ```
 
-### 2. Compilation & Type Checking
+### 🔹 2. Compilation & Type Checking
 Verify clean TypeScript compilation and emit distribution bundles to `./dist`:
 ```bash
 npm run build
 ```
 
-### 3. Unit Testing & Coverage
+### 🧪 3. Unit Testing & Coverage
 Execute the Node.js native test runner with `tsx` and code coverage:
 ```bash
 npm test
 ```
 
-### 4. Complete Pre-Commit Validation
+### 🛡 4. Complete Pre-Commit Validation
 Execute all quality gates sequentially:
 ```bash
 npm run lint && npm run build && npm test
 ```
 
-### 5. Containerized Pipeline Verification
+### 🔹 5. Containerized Pipeline Verification
 Validate the end-to-end containerized packaging build:
 ```bash
 docker build -f deploy/Dockerfile . -t xyo-sdk-node:latest --no-cache
