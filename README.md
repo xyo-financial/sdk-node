@@ -8,7 +8,8 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/xyo-sdk"><img src="https://img.shields.io/npm/v/xyo-sdk.svg?style=flat-square&color=CB3837" alt="npm version" /></a>
-  <a href="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml"><img src="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml/badge.svg?branch=main&style=flat-square&label=build" alt="Build Status" /></a>
+  <a href="https://github.com/xyo-financial/sdk-node/actions/workflows/makefile.yml"><img src="https://github.com/xyo-financial/sdk-node/actions/workflows/makefile.yml/badge.svg?branch=main&style=flat-square&label=build" alt="CI Build" /></a>
+  <a href="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml"><img src="https://github.com/xyo-financial/sdk-node/actions/workflows/release.yml/badge.svg?style=flat-square" alt="Release Pipeline" /></a>
   <a href="https://nodejs.org/docs/latest-v22.x/api/"><img src="https://img.shields.io/badge/Node.js-%3E%3D22.0.0-brightgreen?style=flat-square" alt="Node Compatibility" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-Strict%205.x-3178C6?style=flat-square" alt="TypeScript Strict" /></a>
   <a href="https://datatracker.ietf.org/doc/html/rfc7807"><img src="https://img.shields.io/badge/RFC%207807-Compliant-success?style=flat-square" alt="RFC 7807 Problem Details" /></a>
